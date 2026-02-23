@@ -240,9 +240,9 @@ internal static class JsonPathEvaluator
         // Pre-calculate count and pre-allocate capacity
         if (step > 0)
         {
-            long count = (upper - lower + step - 1) / step;
-            if (count > 0)
+            if (upper > lower)
             {
+                long count = (upper - lower + step - 1) / step;
                 results.EnsureCapacity(results.Count + (int)count);
                 for (long i = lower; i < upper; i += step)
                     results.Add(array[(int)i]);
@@ -250,9 +250,9 @@ internal static class JsonPathEvaluator
         }
         else
         {
-            long count = (lower - upper - step - 1) / (-step);
-            if (count > 0)
+            if (upper > lower)
             {
+                long count = (upper - lower + (-step) - 1) / (-step);
                 results.EnsureCapacity(results.Count + (int)count);
                 for (long i = upper; lower < i; i += step)
                     results.Add(array[(int)i]);
@@ -373,8 +373,8 @@ internal static class JsonPathEvaluator
                 return lit.Value.HasValue ? (true, lit.Value.Value) : (false, default);
 
             case SingularQueryComparable sq:
-                var nodes = EvalSingularQuery(sq.Query, current, root);
-                return nodes.Count == 1 ? (true, nodes[0]) : (false, default);
+                // Optimize: avoid allocating a list for singular queries
+                return TryEvalSingularQuery(sq.Query, current, root);
 
             case FunctionComparable fc:
                 var (_, funcResult) = EvalFunction(fc.Function, current, root);
@@ -387,11 +387,77 @@ internal static class JsonPathEvaluator
         }
     }
 
+    // Optimized version that doesn't allocate a list
+    private static (bool HasValue, JsonElement Value) TryEvalSingularQuery(SingularQuery query, JsonElement current, JsonElement root)
+    {
+        var node = query.IsRelative ? current : root;
+
+        foreach (var seg in query.Segments)
+        {
+            switch (seg)
+            {
+                case SingularNameSegment ns:
+                    if (node.ValueKind == JsonValueKind.Object && node.TryGetProperty(ns.Name, out var prop))
+                        node = prop;
+                    else
+                        return (false, default);
+                    break;
+
+                case SingularIndexSegment ix:
+                    if (node.ValueKind == JsonValueKind.Array)
+                    {
+                        int len = node.GetArrayLength();
+                        long effective = ix.Index >= 0 ? ix.Index : len + ix.Index;
+                        if (effective >= 0 && effective < len)
+                            node = node[(int)effective];
+                        else
+                            return (false, default);
+                    }
+                    else
+                    {
+                        return (false, default);
+                    }
+                    break;
+            }
+        }
+
+        return (true, node);
+    }
+
     private static bool CmpEquals(bool leftHas, JsonElement left, bool rightHas, JsonElement right)
     {
         if (!leftHas && !rightHas) return true;
         if (!leftHas || !rightHas) return false;
-        return DeepEquals(left, right);
+        
+        // Fast path for common primitive comparisons
+        var leftKind = left.ValueKind;
+        var rightKind = right.ValueKind;
+        
+        if (leftKind != rightKind) 
+            return false;
+
+        switch (leftKind)
+        {
+            case JsonValueKind.Null:
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                return true;
+                
+            case JsonValueKind.Number:
+                return CompareNumbers(left, right);
+                
+            case JsonValueKind.String:
+                return left.GetString() == right.GetString();
+                
+            case JsonValueKind.Array:
+                return ArrayDeepEquals(left, right);
+                
+            case JsonValueKind.Object:
+                return ObjectDeepEquals(left, right);
+                
+            default:
+                return false;
+        }
     }
 
     private static bool CmpLessThan(bool leftHas, JsonElement left, bool rightHas, JsonElement right)
