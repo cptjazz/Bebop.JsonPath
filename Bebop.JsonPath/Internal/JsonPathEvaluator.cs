@@ -467,6 +467,10 @@ internal static class JsonPathEvaluator
         // Only numbers vs numbers, or strings vs strings
         if (left.ValueKind == JsonValueKind.Number && right.ValueKind == JsonValueKind.Number)
         {
+            // Fast path for integers
+            if (left.TryGetInt32(out var leftInt) && right.TryGetInt32(out var rightInt))
+                return leftInt < rightInt;
+            
             return left.GetDouble() < right.GetDouble();
         }
 
@@ -497,6 +501,10 @@ internal static class JsonPathEvaluator
 
     private static bool CompareNumbers(JsonElement a, JsonElement b)
     {
+        // Fast path for integers
+        if (a.TryGetInt32(out var aInt) && b.TryGetInt32(out var bInt))
+            return aInt == bInt;
+
         // Try decimal for exact comparison first, fall back to double
         if (a.TryGetDecimal(out var ad) && b.TryGetDecimal(out var bd))
             return ad == bd;
