@@ -674,14 +674,19 @@ internal static class JsonPathEvaluator
 
     private static (FunctionResultType Type, object? Value) EvalFunction(FunctionCall func, JsonElement current, JsonElement root)
     {
-        return func.Name switch
+        return func switch
         {
-            "length" => EvalLength(func, current, root),
-            "count" => EvalCount(func, current, root),
-            "match" => EvalMatch(func, current, root),
-            "search" => EvalSearch(func, current, root),
-            "value" => EvalValueFunc(func, current, root),
-            _ => (FunctionResultType.ValueType, null)
+            MatchFunctionCall match => EvalMatch(match, current, root),
+            SearchFunctionCall search => EvalSearch(search, current, root),
+            _ => func.Name switch
+            {
+                "length" => EvalLength(func, current, root),
+                "count" => EvalCount(func, current, root),
+                "match" => EvalMatchDynamic(func, current, root),
+                "search" => EvalSearchDynamic(func, current, root),
+                "value" => EvalValueFunc(func, current, root),
+                _ => (FunctionResultType.ValueType, null)
+            }
         };
     }
 
@@ -708,7 +713,101 @@ internal static class JsonPathEvaluator
         return (FunctionResultType.ValueType, MakeJsonNumber(nodes.Count));
     }
 
-    private static (FunctionResultType, object?) EvalMatch(FunctionCall func, JsonElement current, JsonElement root)
+    private static (FunctionResultType, object?) EvalMatch(MatchFunctionCall func, JsonElement current, JsonElement root)
+    {
+        var first = ResolveValueTypeArgument(func.Arguments[0], current, root);
+
+        if (first is not JsonElement el1 || el1.ValueKind != JsonValueKind.String)
+            return (FunctionResultType.LogicalType, false);
+
+        string input = el1.GetString()!;
+
+        // Use pre-compiled regex if available
+        if (func.CompiledRegex != null)
+        {
+            try
+            {
+                bool matches = func.CompiledRegex.IsMatch(input);
+                return (FunctionResultType.LogicalType, matches);
+            }
+            catch
+            {
+                return (FunctionResultType.LogicalType, false);
+            }
+        }
+
+        // Fallback: pattern is dynamic (shouldn't happen if second arg is literal)
+        var second = ResolveValueTypeArgument(func.Arguments[1], current, root);
+        if (second is not JsonElement el2 || el2.ValueKind != JsonValueKind.String)
+            return (FunctionResultType.LogicalType, false);
+
+        string pattern = el2.GetString()!;
+        try
+        {
+            string converted = ConvertIRegexp(pattern);
+            string anchored = $"^(?:{converted})$";
+            var regex = TryGetCachedRegex(anchored);
+            if (regex == null)
+                return (FunctionResultType.LogicalType, false);
+
+            bool matches = regex.IsMatch(input);
+            return (FunctionResultType.LogicalType, matches);
+        }
+        catch
+        {
+            return (FunctionResultType.LogicalType, false);
+        }
+    }
+
+    private static (FunctionResultType, object?) EvalSearch(SearchFunctionCall func, JsonElement current, JsonElement root)
+    {
+        var first = ResolveValueTypeArgument(func.Arguments[0], current, root);
+
+        if (first is not JsonElement el1 || el1.ValueKind != JsonValueKind.String)
+            return (FunctionResultType.LogicalType, false);
+
+        string input = el1.GetString()!;
+
+        // Use pre-compiled regex if available
+        if (func.CompiledRegex != null)
+        {
+            try
+            {
+                bool found = func.CompiledRegex.IsMatch(input);
+                return (FunctionResultType.LogicalType, found);
+            }
+            catch
+            {
+                return (FunctionResultType.LogicalType, false);
+            }
+        }
+
+        // Fallback: pattern is dynamic (shouldn't happen if second arg is literal)
+        var second = ResolveValueTypeArgument(func.Arguments[1], current, root);
+        if (second is not JsonElement el2 || el2.ValueKind != JsonValueKind.String)
+            return (FunctionResultType.LogicalType, false);
+
+        string pattern = el2.GetString()!;
+        try
+        {
+            string converted = ConvertIRegexp(pattern);
+            var regex = TryGetCachedRegex(converted);
+            if (regex == null)
+                return (FunctionResultType.LogicalType, false);
+
+            bool found = regex.IsMatch(input);
+            return (FunctionResultType.LogicalType, found);
+        }
+        catch
+        {
+            return (FunctionResultType.LogicalType, false);
+        }
+    }
+
+    /// <summary>
+    /// Evaluates match() when the pattern is not a compile-time literal.
+    /// </summary>
+    private static (FunctionResultType, object?) EvalMatchDynamic(FunctionCall func, JsonElement current, JsonElement root)
     {
         var first = ResolveValueTypeArgument(func.Arguments[0], current, root);
         var second = ResolveValueTypeArgument(func.Arguments[1], current, root);
@@ -737,7 +836,10 @@ internal static class JsonPathEvaluator
         }
     }
 
-    private static (FunctionResultType, object?) EvalSearch(FunctionCall func, JsonElement current, JsonElement root)
+    /// <summary>
+    /// Evaluates search() when the pattern is not a compile-time literal.
+    /// </summary>
+    private static (FunctionResultType, object?) EvalSearchDynamic(FunctionCall func, JsonElement current, JsonElement root)
     {
         var first = ResolveValueTypeArgument(func.Arguments[0], current, root);
         var second = ResolveValueTypeArgument(func.Arguments[1], current, root);

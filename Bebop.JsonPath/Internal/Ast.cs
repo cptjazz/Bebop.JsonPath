@@ -70,7 +70,26 @@ internal sealed record SingularIndexSegment(long Index) : SingularSegment;
 
 // ── Function Calls ────────────────────────────────────────────────────────────
 
-internal sealed record FunctionCall(string Name, IFunctionArgument[] Arguments);
+internal abstract record FunctionCall(string Name, IFunctionArgument[] Arguments);
+
+/// <summary>
+/// Standard function call without pre-compiled data.
+/// </summary>
+internal sealed record StandardFunctionCall(string Name, IFunctionArgument[] Arguments) : FunctionCall(Name, Arguments);
+
+/// <summary>
+/// Function call for match() with pre-compiled regex.
+/// Pattern is anchored (^...$) for full string matching.
+/// </summary>
+internal sealed record MatchFunctionCall(IFunctionArgument[] Arguments, System.Text.RegularExpressions.Regex? CompiledRegex) 
+    : FunctionCall("match", Arguments);
+
+/// <summary>
+/// Function call for search() with pre-compiled regex.
+/// Pattern is unanchored for substring matching.
+/// </summary>
+internal sealed record SearchFunctionCall(IFunctionArgument[] Arguments, System.Text.RegularExpressions.Regex? CompiledRegex) 
+    : FunctionCall("search", Arguments);
 
 internal interface IFunctionArgument;
 internal sealed record LiteralArgument(JsonElement? Value) : IFunctionArgument;
