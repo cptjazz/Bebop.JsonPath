@@ -712,47 +712,58 @@ internal static class JsonPathEvaluator
     /// </summary>
     private static string ConvertIRegexp(string pattern)
     {
-        var sb = new StringBuilder(pattern.Length * 2);
-        bool inCharClass = false;
-
-        for (int i = 0; i < pattern.Length; i++)
+        lock (_iregexpConversionCache)
         {
-            char c = pattern[i];
+            if (_iregexpConversionCache.TryGetValue(pattern, out var cached))
+                return cached;
 
-            if (c == '\\' && i + 1 < pattern.Length)
+            if (_iregexpConversionCache.Count >= MaxIRegexpCacheSize)
+                _iregexpConversionCache.Clear();
+
+            var sb = new StringBuilder(pattern.Length * 2);
+            bool inCharClass = false;
+
+            for (int i = 0; i < pattern.Length; i++)
             {
-                // Escaped character — pass through as-is
+                char c = pattern[i];
+
+                if (c == '\\' && i + 1 < pattern.Length)
+                {
+                    // Escaped character — pass through as-is
+                    sb.Append(c);
+                    sb.Append(pattern[i + 1]);
+                    i++;
+                    continue;
+                }
+
+                if (c == '[' && !inCharClass)
+                {
+                    inCharClass = true;
+                    sb.Append(c);
+                    continue;
+                }
+
+                if (c == ']' && inCharClass)
+                {
+                    inCharClass = false;
+                    sb.Append(c);
+                    continue;
+                }
+
+                if (c == '.' && !inCharClass)
+                {
+                    // I-Regexp dot: any code point except \n and \r, including surrogates
+                    sb.Append("(?:[^\\n\\r\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])");
+                    continue;
+                }
+
                 sb.Append(c);
-                sb.Append(pattern[i + 1]);
-                i++;
-                continue;
             }
 
-            if (c == '[' && !inCharClass)
-            {
-                inCharClass = true;
-                sb.Append(c);
-                continue;
-            }
-
-            if (c == ']' && inCharClass)
-            {
-                inCharClass = false;
-                sb.Append(c);
-                continue;
-            }
-
-            if (c == '.' && !inCharClass)
-            {
-                // I-Regexp dot: any code point except \n and \r, including surrogates
-                sb.Append("(?:[^\\n\\r\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])");
-                continue;
-            }
-
-            sb.Append(c);
+            var result = sb.ToString();
+            _iregexpConversionCache[pattern] = result;
+            return result;
         }
-
-        return sb.ToString();
     }
 
     private static (FunctionResultType, object?) EvalValueFunc(FunctionCall func, JsonElement current, JsonElement root)
@@ -811,6 +822,10 @@ internal static class JsonPathEvaluator
     // Cache for compiled regexes
     private static readonly Dictionary<string, Regex?> _regexCache = new();
     private const int MaxRegexCacheSize = 100;
+    
+    // Cache for I-Regexp to .NET Regex pattern conversion
+    private static readonly Dictionary<string, string> _iregexpConversionCache = new();
+    private const int MaxIRegexpCacheSize = 100;
 
     private static JsonElement[] CreateCachedNumbers()
     {
