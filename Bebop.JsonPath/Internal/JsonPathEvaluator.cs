@@ -112,15 +112,30 @@ internal static class JsonPathEvaluator
     {
         // Visit the node and all its descendants in pre-order.
         // For each visited node, apply the child selectors.
-        var descendants = new List<JsonElement>();
-        CollectDescendants(in node, descendants);
+        CollectDescendantsAndApplySelectors(in node, segment.Selectors, in root, results);
+    }
 
-        foreach (var desc in descendants)
+    private static void CollectDescendantsAndApplySelectors(ref readonly JsonElement node, ISelector[] selectors, ref readonly JsonElement root, List<JsonElement> results)
+    {
+        // Apply selectors to this node
+        foreach (var selector in selectors)
         {
-            foreach (var selector in segment.Selectors)
+            ApplySelector(selector, in node, in root, results);
+        }
+
+        // Then recurse to descendants
+        if (node.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in node.EnumerateObject())
             {
-                ApplySelector(selector, in desc, in root, results);
+                JsonElement value = prop.Value;
+                CollectDescendantsAndApplySelectors(in value, selectors, in root, results);
             }
+        }
+        else if (node.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var elem in node.EnumerateArray())
+                CollectDescendantsAndApplySelectors(in elem, selectors, in root, results);
         }
     }
 
@@ -159,11 +174,15 @@ internal static class JsonPathEvaluator
             case WildcardSelector:
                 if (node.ValueKind == JsonValueKind.Object)
                 {
+                    int propCount = node.GetPropertyCount();
+                    results.EnsureCapacity(results.Count + propCount);
                     foreach (var p in node.EnumerateObject())
                         results.Add(p.Value);
                 }
                 else if (node.ValueKind == JsonValueKind.Array)
                 {
+                    int arrayLen = node.GetArrayLength();
+                    results.EnsureCapacity(results.Count + arrayLen);
                     foreach (var e in node.EnumerateArray())
                         results.Add(e);
                 }
@@ -218,15 +237,26 @@ internal static class JsonPathEvaluator
             lower = Math.Min(Math.Max(nEnd, -1), len - 1);
         }
 
+        // Pre-calculate count and pre-allocate capacity
         if (step > 0)
         {
-            for (long i = lower; i < upper; i += step)
-                results.Add(array[(int)i]);
+            long count = (upper - lower + step - 1) / step;
+            if (count > 0)
+            {
+                results.EnsureCapacity(results.Count + (int)count);
+                for (long i = lower; i < upper; i += step)
+                    results.Add(array[(int)i]);
+            }
         }
         else
         {
-            for (long i = upper; lower < i; i += step)
-                results.Add(array[(int)i]);
+            long count = (lower - upper - step - 1) / (-step);
+            if (count > 0)
+            {
+                results.EnsureCapacity(results.Count + (int)count);
+                for (long i = upper; lower < i; i += step)
+                    results.Add(array[(int)i]);
+            }
         }
     }
 
@@ -238,6 +268,10 @@ internal static class JsonPathEvaluator
     {
         if (node.ValueKind == JsonValueKind.Array)
         {
+            int arrayLen = node.GetArrayLength();
+            int startCount = results.Count;
+            results.EnsureCapacity(startCount + arrayLen); // Reserve space for worst case
+
             foreach (var elem in node.EnumerateArray())
             {
                 if (EvalLogical(fs.Expression, elem, root))
@@ -246,6 +280,10 @@ internal static class JsonPathEvaluator
         }
         else if (node.ValueKind == JsonValueKind.Object)
         {
+            int propCount = node.GetPropertyCount();
+            int startCount = results.Count;
+            results.EnsureCapacity(startCount + propCount); // Reserve space for worst case
+
             foreach (var prop in node.EnumerateObject())
             {
                 if (EvalLogical(fs.Expression, prop.Value, root))
@@ -260,14 +298,34 @@ internal static class JsonPathEvaluator
     {
         return expr switch
         {
-            OrExpr or => or.Operands.Any(op => EvalLogical(op, current, root)),
-            AndExpr and => and.Operands.All(op => EvalLogical(op, current, root)),
+            OrExpr or => EvalOr(or, current, root),
+            AndExpr and => EvalAnd(and, current, root),
             NotExpr not => !EvalLogical(not.Operand, current, root),
             ComparisonExpr cmp => EvalComparison(cmp, current, root),
             ExistenceExpr ex => EvalExistence(ex.Query, current, root),
             FunctionTestExpr ft => EvalFunctionTest(ft.Function, current, root),
             _ => false
         };
+    }
+
+    private static bool EvalOr(OrExpr or, JsonElement current, JsonElement root)
+    {
+        foreach (var operand in or.Operands)
+        {
+            if (EvalLogical(operand, current, root))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool EvalAnd(AndExpr and, JsonElement current, JsonElement root)
+    {
+        foreach (var operand in and.Operands)
+        {
+            if (!EvalLogical(operand, current, root))
+                return false;
+        }
+        return true;
     }
 
     private static bool EvalExistence(FilterQuery query, JsonElement current, JsonElement root)
@@ -397,23 +455,25 @@ internal static class JsonPathEvaluator
 
     private static bool ObjectDeepEquals(JsonElement a, JsonElement b)
     {
-        var aDict = new Dictionary<string, JsonElement>();
+        int aCount = a.GetPropertyCount();
+        int bCount = b.GetPropertyCount();
+        
+        if (aCount != bCount) 
+            return false;
+
+        // Build dictionary only for 'a', then look up in 'b'
+        var aDict = new Dictionary<string, JsonElement>(aCount);
         foreach (var p in a.EnumerateObject())
             aDict[p.Name] = p.Value;
 
-        var bDict = new Dictionary<string, JsonElement>();
-        foreach (var p in b.EnumerateObject())
-            bDict[p.Name] = p.Value;
-
-        if (aDict.Count != bDict.Count) return false;
-
-        foreach (var (key, aVal) in aDict)
+        foreach (var bProp in b.EnumerateObject())
         {
-            if (!bDict.TryGetValue(key, out var bVal))
+            if (!aDict.TryGetValue(bProp.Name, out var aVal))
                 return false;
-            if (!DeepEquals(aVal, bVal))
+            if (!DeepEquals(aVal, bProp.Value))
                 return false;
         }
+        
         return true;
     }
 
@@ -426,7 +486,7 @@ internal static class JsonPathEvaluator
 
         foreach (var segment in query.Segments)
         {
-            var next = new List<JsonElement>();
+            var next = new List<JsonElement>(nodes.Count * 2); // Estimate capacity
             foreach (var node in nodes)
             {
                 if (segment.IsDescendant)
@@ -530,7 +590,11 @@ internal static class JsonPathEvaluator
         {
             string converted = ConvertIRegexp(pattern);
             string anchored = $"^(?:{converted})$";
-            bool matches = Regex.IsMatch(input, anchored, RegexOptions.None, TimeSpan.FromSeconds(1));
+            var regex = TryGetCachedRegex(anchored);
+            if (regex == null)
+                return (FunctionResultType.LogicalType, false);
+
+            bool matches = regex.IsMatch(input);
             return (FunctionResultType.LogicalType, matches);
         }
         catch
@@ -554,7 +618,11 @@ internal static class JsonPathEvaluator
         try
         {
             string converted = ConvertIRegexp(pattern);
-            bool found = Regex.IsMatch(input, converted, RegexOptions.None, TimeSpan.FromSeconds(1));
+            var regex = TryGetCachedRegex(converted);
+            if (regex == null)
+                return (FunctionResultType.LogicalType, false);
+
+            bool found = regex.IsMatch(input);
             return (FunctionResultType.LogicalType, found);
         }
         catch
@@ -663,9 +731,52 @@ internal static class JsonPathEvaluator
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
+    // Cache for small integers to avoid repeated JsonDocument.Parse calls
+    private static readonly JsonElement[] _cachedNumbers = CreateCachedNumbers();
+    
+    // Cache for compiled regexes
+    private static readonly Dictionary<string, Regex?> _regexCache = new();
+    private const int MaxRegexCacheSize = 100;
+
+    private static JsonElement[] CreateCachedNumbers()
+    {
+        var cache = new JsonElement[256];
+        for (int i = 0; i < 256; i++)
+        {
+            cache[i] = JsonDocument.Parse(i.ToString()).RootElement.Clone();
+        }
+        return cache;
+    }
+
     private static JsonElement MakeJsonNumber(int value)
     {
+        if (value >= 0 && value < 256)
+            return _cachedNumbers[value];
         return JsonDocument.Parse(value.ToString()).RootElement.Clone();
+    }
+
+    private static Regex? TryGetCachedRegex(string pattern)
+    {
+        lock (_regexCache)
+        {
+            if (_regexCache.TryGetValue(pattern, out var regex))
+                return regex;
+
+            if (_regexCache.Count >= MaxRegexCacheSize)
+                _regexCache.Clear(); // Simple eviction strategy
+
+            try
+            {
+                regex = new Regex(pattern, RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+                _regexCache[pattern] = regex;
+                return regex;
+            }
+            catch
+            {
+                _regexCache[pattern] = null;
+                return null;
+            }
+        }
     }
 
     private static int CountObjectMembers(JsonElement obj)
