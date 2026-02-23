@@ -87,7 +87,7 @@ internal ref struct JsonPathParser
                     else if (_pos < _source.Length && _source[_pos] == '*')
                     {
                         _pos++; // consume '*'
-                        segments.Add(new Segment([new WildcardSelector()], true));
+                        segments.Add(new Segment([WildcardSelector.Instance], true));
                     }
                     else
                     {
@@ -103,7 +103,7 @@ internal ref struct JsonPathParser
                     if (_pos < _source.Length && _source[_pos] == '*')
                     {
                         _pos++; // consume '*'
-                        segments.Add(new Segment([new WildcardSelector()], false));
+                        segments.Add(new Segment([WildcardSelector.Instance], false));
                     }
                     else
                     {
@@ -165,7 +165,7 @@ internal ref struct JsonPathParser
         if (c == '*')
         {
             _pos++;
-            return new WildcardSelector();
+            return WildcardSelector.Instance;
         }
         if (c == '?')
         {

@@ -82,7 +82,7 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// Evaluates the JSONPath query against the given JSON element.
     /// Returns the resulting nodelist as <see cref="JsonElement"/>[], or null if evaluation fails.
     /// </summary>
-    public object? Evaluate(JsonElement jsonDocument)
+    public object? Evaluate(in JsonElement jsonDocument)
     {
         if (TryEvaluate(jsonDocument, out var result))
             return result;
@@ -92,9 +92,9 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// <summary>
     /// Tries to evaluate the JSONPath query against the given JSON element.
     /// </summary>
-    public bool TryEvaluate(JsonElement jsonDocument, out object? result)
+    public bool TryEvaluate(in JsonElement jsonDocument, out object? result)
     {
-        result = JsonPathEvaluator.Evaluate(_segments ?? [], jsonDocument);
+        result = JsonPathEvaluator.Evaluate(_segments ?? [], in jsonDocument);
         return true;
     }
 

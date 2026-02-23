@@ -12,19 +12,24 @@ internal static class JsonPathEvaluator
     /// <summary>
     /// Evaluates the query segments against the root element and returns the resulting nodelist.
     /// </summary>
-    internal static JsonElement[] Evaluate(Segment[] segments, JsonElement root)
+    internal static JsonElement[] Evaluate(ReadOnlySpan<Segment> segments, ref readonly JsonElement root)
     {
+        // Fast path: when every segment is a non-descendant, single name/index selector
+        // we can walk the tree directly without any intermediate list allocations.
+        if (TryEvaluateSingularPath(segments, in root, out var singularResult))
+            return singularResult;
+
         var current = new List<JsonElement> { root };
 
         foreach (var segment in segments)
         {
-            var next = new List<JsonElement>();
+            var next = new List<JsonElement>(current.Count);
             foreach (var node in current)
             {
                 if (segment.IsDescendant)
-                    EvaluateDescendantSegment(segment, node, root, next);
+                    EvaluateDescendantSegment(segment, in node, in root, next);
                 else
-                    EvaluateChildSegment(segment, node, root, next);
+                    EvaluateChildSegment(segment, in node, in root, next);
             }
             current = next;
         }
@@ -32,49 +37,117 @@ internal static class JsonPathEvaluator
         return current.ToArray();
     }
 
-    private static void EvaluateChildSegment(Segment segment, JsonElement node, JsonElement root, List<JsonElement> results)
+    /// <summary>
+    /// Attempts a zero-allocation walk for paths composed entirely of
+    /// non-descendant single name/index selectors (e.g. $.store.book[0].title).
+    /// </summary>
+    private static bool TryEvaluateSingularPath(ReadOnlySpan<Segment> segments, ref readonly JsonElement root, out JsonElement[] result)
+    {
+        foreach (var segment in segments)
+        {
+            if (segment.IsDescendant || segment.Selectors.Length != 1)
+            {
+                result = default!;
+                return false;
+            }
+
+            var selector = segment.Selectors[0];
+            if (selector is not NameSelector and not IndexSelector)
+            {
+                result = default!;
+                return false;
+            }
+        }
+
+        var node = root;
+        foreach (var segment in segments)
+        {
+            switch (segment.Selectors[0])
+            {
+                case NameSelector ns:
+                    if (node.ValueKind == JsonValueKind.Object && node.TryGetProperty(ns.Name, out var prop))
+                        node = prop;
+                    else
+                    {
+                        result = [];
+                        return true;
+                    }
+                    break;
+
+                case IndexSelector ix:
+                    if (node.ValueKind == JsonValueKind.Array)
+                    {
+                        int len = node.GetArrayLength();
+                        long effective = ix.Index >= 0 ? ix.Index : len + ix.Index;
+                        if (effective >= 0 && effective < len)
+                            node = node[(int)effective];
+                        else
+                        {
+                            result = [];
+                            return true;
+                        }
+                    }
+                    else
+                    {
+                        result = [];
+                        return true;
+                    }
+                    break;
+            }
+        }
+
+        result = [node];
+        return true;
+    }
+
+    private static void EvaluateChildSegment(Segment segment, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
     {
         foreach (var selector in segment.Selectors)
         {
-            ApplySelector(selector, node, root, results);
+            ApplySelector(selector, in node, in root, results);
         }
     }
 
-    private static void EvaluateDescendantSegment(Segment segment, JsonElement node, JsonElement root, List<JsonElement> results)
+    private static void EvaluateDescendantSegment(Segment segment, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
     {
         // Visit the node and all its descendants in pre-order.
         // For each visited node, apply the child selectors.
         var descendants = new List<JsonElement>();
-        CollectDescendants(node, descendants);
+        CollectDescendants(in node, descendants);
 
         foreach (var desc in descendants)
         {
             foreach (var selector in segment.Selectors)
             {
-                ApplySelector(selector, desc, root, results);
+                ApplySelector(selector, in desc, in root, results);
             }
         }
     }
 
-    private static void CollectDescendants(JsonElement node, List<JsonElement> list)
+    private static void CollectDescendants(ref readonly JsonElement node, List<JsonElement> list)
     {
         list.Add(node);
 
         if (node.ValueKind == JsonValueKind.Object)
         {
+            list.EnsureCapacity(list.Count + node.GetPropertyCount());
             foreach (var prop in node.EnumerateObject())
-                CollectDescendants(prop.Value, list);
+            {
+                JsonElement value = prop.Value;
+                CollectDescendants(in value, list);
+            }
         }
         else if (node.ValueKind == JsonValueKind.Array)
         {
+            list.EnsureCapacity(list.Count + node.GetArrayLength());
             foreach (var elem in node.EnumerateArray())
-                CollectDescendants(elem, list);
+                CollectDescendants(in elem, list);
         }
     }
 
     // ── Selector Application ──────────────────────────────────────────────
 
-    private static void ApplySelector(ISelector selector, JsonElement node, JsonElement root, List<JsonElement> results)
+    private static void ApplySelector(ISelector selector, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
     {
         switch (selector)
         {
@@ -108,18 +181,18 @@ internal static class JsonPathEvaluator
 
             case SliceSelector sl:
                 if (node.ValueKind == JsonValueKind.Array)
-                    ApplySlice(sl, node, results);
+                    ApplySlice(sl, in node, results);
                 break;
 
             case FilterSelector fs:
-                ApplyFilter(fs, node, root, results);
+                ApplyFilter(fs, in node, in root, results);
                 break;
         }
     }
 
     // ── Slice ─────────────────────────────────────────────────────────────
 
-    private static void ApplySlice(SliceSelector sl, JsonElement array, List<JsonElement> results)
+    private static void ApplySlice(SliceSelector sl, ref readonly JsonElement array, List<JsonElement> results)
     {
         int len = array.GetArrayLength();
         long step = sl.Step ?? 1;
@@ -161,7 +234,7 @@ internal static class JsonPathEvaluator
 
     // ── Filter ────────────────────────────────────────────────────────────
 
-    private static void ApplyFilter(FilterSelector fs, JsonElement node, JsonElement root, List<JsonElement> results)
+    private static void ApplyFilter(FilterSelector fs, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
     {
         if (node.ValueKind == JsonValueKind.Array)
         {
@@ -357,9 +430,9 @@ internal static class JsonPathEvaluator
             foreach (var node in nodes)
             {
                 if (segment.IsDescendant)
-                    EvaluateDescendantSegment(segment, node, root, next);
+                    EvaluateDescendantSegment(segment, in node, in root, next);
                 else
-                    EvaluateChildSegment(segment, node, root, next);
+                    EvaluateChildSegment(segment, in node, in root, next);
             }
             nodes = next;
         }

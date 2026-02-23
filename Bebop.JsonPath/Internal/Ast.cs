@@ -10,7 +10,14 @@ internal sealed record Segment(ISelector[] Selectors, bool IsDescendant);
 
 internal interface ISelector;
 internal sealed record NameSelector(string Name) : ISelector;
-internal sealed record WildcardSelector : ISelector;
+internal sealed record WildcardSelector : ISelector
+{
+    public static readonly WildcardSelector Instance = new();
+
+    private WildcardSelector()
+    {
+    }
+}
 internal sealed record IndexSelector(long Index) : ISelector;
 internal sealed record SliceSelector(long? Start, long? End, long? Step) : ISelector;
 internal sealed record FilterSelector(LogicalExpr Expression) : ISelector;
