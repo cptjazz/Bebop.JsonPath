@@ -26,10 +26,23 @@ internal static class JsonPathEvaluator
             var next = new List<JsonElement>(current.Count);
             foreach (var node in current)
             {
-                if (segment.IsDescendant)
-                    EvaluateDescendantSegment(segment, in node, in root, next);
-                else
-                    EvaluateChildSegment(segment, in node, in root, next);
+                // Dispatch based on segment type and descendant flag
+                switch (segment)
+                {
+                    case SingleSelectorSegment sing:
+                        if (sing.IsDescendant)
+                            EvaluateDescendantSingularSegment(sing.Selector, in node, in root, next);
+                        else
+                            ApplySelector(sing.Selector, in node, in root, next);
+                        break;
+                        
+                    case MultiSelectorSegment multi:
+                        if (multi.IsDescendant)
+                            EvaluateDescendantMultiSegment(multi.Selectors, in node, in root, next);
+                        else
+                            EvaluateChildMultiSegment(multi.Selectors, in node, in root, next);
+                        break;
+                }
             }
             current = next;
         }
@@ -45,14 +58,19 @@ internal static class JsonPathEvaluator
     {
         foreach (var segment in segments)
         {
-            if (segment.IsDescendant || segment.Selectors.Length != 1)
+            if (segment.IsDescendant)
             {
                 result = default!;
                 return false;
             }
 
-            var selector = segment.Selectors[0];
-            if (selector is not NameSelector and not IndexSelector)
+            if (segment is not SingleSelectorSegment sing)
+            {
+                result = default!;
+                return false;
+            }
+            
+            if (sing.Selector is not NameSelector and not IndexSelector)
             {
                 result = default!;
                 return false;
@@ -62,7 +80,8 @@ internal static class JsonPathEvaluator
         var node = root;
         foreach (var segment in segments)
         {
-            switch (segment.Selectors[0])
+            var sing = (SingleSelectorSegment)segment;
+            switch (sing.Selector)
             {
                 case NameSelector ns:
                     if (node.ValueKind == JsonValueKind.Object && node.TryGetProperty(ns.Name, out var prop))
@@ -100,19 +119,47 @@ internal static class JsonPathEvaluator
         return true;
     }
 
-    private static void EvaluateChildSegment(Segment segment, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
+    private static void EvaluateChildMultiSegment(ISelector[] selectors, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
     {
-        foreach (var selector in segment.Selectors)
+        foreach (var selector in selectors)
         {
             ApplySelector(selector, in node, in root, results);
         }
     }
 
-    private static void EvaluateDescendantSegment(Segment segment, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
+    private static void EvaluateDescendantSingularSegment(ISelector selector, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
     {
         // Visit the node and all its descendants in pre-order.
-        // For each visited node, apply the child selectors.
-        CollectDescendantsAndApplySelectors(in node, segment.Selectors, in root, results);
+        // For each visited node, apply the selector.
+        CollectDescendantsAndApplySelector(in node, selector, in root, results);
+    }
+
+    private static void EvaluateDescendantMultiSegment(ISelector[] selectors, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
+    {
+        // Visit the node and all its descendants in pre-order.
+        // For each visited node, apply all selectors.
+        CollectDescendantsAndApplySelectors(in node, selectors, in root, results);
+    }
+
+    private static void CollectDescendantsAndApplySelector(ref readonly JsonElement node, ISelector selector, ref readonly JsonElement root, List<JsonElement> results)
+    {
+        // Apply selector to this node
+        ApplySelector(selector, in node, in root, results);
+
+        // Then recurse to descendants
+        if (node.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in node.EnumerateObject())
+            {
+                JsonElement value = prop.Value;
+                CollectDescendantsAndApplySelector(in value, selector, in root, results);
+            }
+        }
+        else if (node.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var elem in node.EnumerateArray())
+                CollectDescendantsAndApplySelector(in elem, selector, in root, results);
+        }
     }
 
     private static void CollectDescendantsAndApplySelectors(ref readonly JsonElement node, ISelector[] selectors, ref readonly JsonElement root, List<JsonElement> results)
@@ -563,10 +610,23 @@ internal static class JsonPathEvaluator
             var next = new List<JsonElement>(nodes.Count * 2); // Estimate capacity
             foreach (var node in nodes)
             {
-                if (segment.IsDescendant)
-                    EvaluateDescendantSegment(segment, in node, in root, next);
-                else
-                    EvaluateChildSegment(segment, in node, in root, next);
+                // Dispatch based on segment type
+                switch (segment)
+                {
+                    case SingleSelectorSegment sing:
+                        if (sing.IsDescendant)
+                            EvaluateDescendantSingularSegment(sing.Selector, in node, in root, next);
+                        else
+                            ApplySelector(sing.Selector, in node, in root, next);
+                        break;
+                        
+                    case MultiSelectorSegment multi:
+                        if (multi.IsDescendant)
+                            EvaluateDescendantMultiSegment(multi.Selectors, in node, in root, next);
+                        else
+                            EvaluateChildMultiSegment(multi.Selectors, in node, in root, next);
+                        break;
+                }
             }
             nodes = next;
         }

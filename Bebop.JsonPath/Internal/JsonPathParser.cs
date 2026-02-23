@@ -87,13 +87,13 @@ internal ref struct JsonPathParser
                     else if (_pos < _source.Length && _source[_pos] == '*')
                     {
                         _pos++; // consume '*'
-                        segments.Add(new Segment([WildcardSelector.Instance], true));
+                        segments.Add(new SingleSelectorSegment(WildcardSelector.Instance, true));
                     }
                     else
                     {
                         // member-name-shorthand
                         string name = ParseMemberNameShorthand();
-                        segments.Add(new Segment([new NameSelector(name)], true));
+                        segments.Add(new SingleSelectorSegment(new NameSelector(name), true));
                     }
                 }
                 else
@@ -103,12 +103,12 @@ internal ref struct JsonPathParser
                     if (_pos < _source.Length && _source[_pos] == '*')
                     {
                         _pos++; // consume '*'
-                        segments.Add(new Segment([WildcardSelector.Instance], false));
+                        segments.Add(new SingleSelectorSegment(WildcardSelector.Instance, false));
                     }
                     else
                     {
                         string name = ParseMemberNameShorthand();
-                        segments.Add(new Segment([new NameSelector(name)], false));
+                        segments.Add(new SingleSelectorSegment(new NameSelector(name), false));
                     }
                 }
             }
@@ -145,7 +145,12 @@ internal ref struct JsonPathParser
 
         SkipWhitespace();
         Expect(']');
-        return new Segment(selectors.ToArray(), isDescendant);
+        
+        // Create SingleSelectorSegment for single selector, MultiSelectorSegment for multiple
+        if (selectors.Count == 1)
+            return new SingleSelectorSegment(selectors[0], isDescendant);
+        else
+            return new MultiSelectorSegment(selectors.ToArray(), isDescendant);
     }
 
     // ── Selectors ─────────────────────────────────────────────────────────
@@ -1013,8 +1018,8 @@ internal ref struct JsonPathParser
                 return new FilterQueryArgument(new FilterQuery(sq.IsRelative,
                     sq.Segments.Select<SingularSegment, Segment>(s => s switch
                     {
-                        SingularNameSegment n => new Segment([new NameSelector(n.Name)], false),
-                        SingularIndexSegment i => new Segment([new IndexSelector(i.Index)], false),
+                        SingularNameSegment n => new SingleSelectorSegment(new NameSelector(n.Name), false),
+                        SingularIndexSegment i => new SingleSelectorSegment(new IndexSelector(i.Index), false),
                         _ => throw new InvalidOperationException()
                     }).ToArray()));
             }

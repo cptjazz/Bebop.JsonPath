@@ -4,7 +4,17 @@ namespace Bebop.JsonPath.Internal;
 
 // ── Segments ──────────────────────────────────────────────────────────────────
 
-internal sealed record Segment(ISelector[] Selectors, bool IsDescendant);
+internal abstract record Segment(bool IsDescendant);
+
+/// <summary>
+/// Segment with a single selector - optimized path without array iteration.
+/// </summary>
+internal sealed record SingleSelectorSegment(ISelector Selector, bool IsDescendant) : Segment(IsDescendant);
+
+/// <summary>
+/// Segment with multiple selectors - requires iteration.
+/// </summary>
+internal sealed record MultiSelectorSegment(ISelector[] Selectors, bool IsDescendant) : Segment(IsDescendant);
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
 

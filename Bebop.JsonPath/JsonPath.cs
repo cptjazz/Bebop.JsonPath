@@ -41,7 +41,7 @@ public readonly struct JsonPath : IEquatable<JsonPath>
 
         var newSegments = new Segment[(_segments?.Length ?? 0) + 1];
         _segments?.CopyTo(newSegments, 0);
-        newSegments[^1] = new Segment([new NameSelector(propertyName)], false);
+        newSegments[^1] = new SingleSelectorSegment(new NameSelector(propertyName), false);
 
         string newOriginal = (_original ?? "$") + "['" + EscapeName(propertyName) + "']";
         return new JsonPath(newSegments, newOriginal);
@@ -54,7 +54,7 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     {
         var newSegments = new Segment[(_segments?.Length ?? 0) + 1];
         _segments?.CopyTo(newSegments, 0);
-        newSegments[^1] = new Segment([new IndexSelector(index)], false);
+        newSegments[^1] = new SingleSelectorSegment(new IndexSelector(index), false);
 
         string newOriginal = (_original ?? "$") + "[" + index + "]";
         return new JsonPath(newSegments, newOriginal);
