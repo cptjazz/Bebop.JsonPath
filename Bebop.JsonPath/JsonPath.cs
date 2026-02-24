@@ -53,7 +53,7 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     }
 
     /// <summary>
-    /// Creates a new <see cref="JsonPath"/> with an appended array index selector.
+    /// Creates a new <see cref="JsonPath"/> with an appended index selector.
     /// </summary>
     public JsonPath Index(int index)
     {

@@ -101,7 +101,7 @@ normal-index-selector = "0" / (DIGIT1 *DIGIT)
 | Input Path | Normalized Path | Comment |
 |---|---|---|
 | `$.a` | `$['a']` | Object value |
-| `$[1]` | `$[1]` | Array index (already normalized) |
+| `$[1]` | `$[1]` | Index (already normalized) |
 | `$[-3]` | `$[2]` | Negative index (array length = 5) |
 | `$.a.b[1:2]` | `$['a']['b'][1]` | Nested structure |
 | `$["\u000B"]` | `$['\u000b']` | Unicode escape → lowercase hex |
