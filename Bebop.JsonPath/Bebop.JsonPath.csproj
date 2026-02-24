@@ -16,7 +16,12 @@
     <RepositoryUrl>https://github.com/cptjazz/Bebop.JsonPath</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/cptjazz/Bebop.JsonPath</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Tests.Bebop.JsonPath" />
