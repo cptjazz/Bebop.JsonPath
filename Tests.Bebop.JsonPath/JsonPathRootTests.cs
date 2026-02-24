@@ -72,14 +72,14 @@ public sealed class JsonPathRootTests
     }
 
     [Fact]
-    public void Root_ArrayIndexChaining_CreatesCorrectPath()
+    public void Root_IndexChaining_CreatesCorrectPath()
     {
         // Arrange
         var json = """[10, 20, 30]""";
         using var doc = JsonDocument.Parse(json);
 
         // Act
-        var path = JsonPathType.Root.ArrayIndex(1);
+        var path = JsonPathType.Root.Index(1);
 
         // Assert
         Assert.Equal("$[1]", path.ToString());
@@ -98,7 +98,7 @@ public sealed class JsonPathRootTests
         using var doc = JsonDocument.Parse(json);
 
         // Act
-        var path = JsonPathType.Root.Property("items").ArrayIndex(0).Property("name");
+        var path = JsonPathType.Root.Property("items").Index(0).Property("name");
 
         // Assert
         Assert.Equal("$['items'][0]['name']", path.ToString());

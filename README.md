@@ -188,7 +188,7 @@ var path = JsonPath.Parse("$")
 var path2 = JsonPath.Root
     .Property("store")
     .Property("book")
-    .ArrayIndex(0)
+    .Index(0)
     .Property("title");
 
 // Both are equivalent to: $.store.book[0].title
