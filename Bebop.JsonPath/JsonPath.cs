@@ -50,7 +50,7 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// <summary>
     /// Creates a new <see cref="JsonPath"/> with an appended array index selector.
     /// </summary>
-    public JsonPath ArrayIndex(int index)
+    public JsonPath Index(int index)
     {
         var newSegments = new Segment[(_segments?.Length ?? 0) + 1];
         _segments?.CopyTo(newSegments, 0);
