@@ -4,6 +4,18 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>Bebop.JsonPath</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Alexander Jesner</Authors>
+    <Company>Alexander Jesner</Company>
+    <Description>RFC 9535 compliant JSONPath implementation for .NET</Description>
+    <PackageTags>jsonpath;json;query;rfc9535</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/cptjazz/Bebop.JsonPath</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/cptjazz/Bebop.JsonPath</PackageProjectUrl>
   </PropertyGroup>
 
 </Project>
