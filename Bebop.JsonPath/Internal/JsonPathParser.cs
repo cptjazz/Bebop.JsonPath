@@ -87,13 +87,13 @@ internal ref struct JsonPathParser
                     else if (_pos < _source.Length && _source[_pos] == '*')
                     {
                         _pos++; // consume '*'
-                        segments.Add(new Segment([WildcardSelector.Instance], true));
+                        segments.Add(new SingleSelectorSegment(WildcardSelector.Instance, true));
                     }
                     else
                     {
                         // member-name-shorthand
                         string name = ParseMemberNameShorthand();
-                        segments.Add(new Segment([new NameSelector(name)], true));
+                        segments.Add(new SingleSelectorSegment(new NameSelector(name), true));
                     }
                 }
                 else
@@ -103,12 +103,12 @@ internal ref struct JsonPathParser
                     if (_pos < _source.Length && _source[_pos] == '*')
                     {
                         _pos++; // consume '*'
-                        segments.Add(new Segment([WildcardSelector.Instance], false));
+                        segments.Add(new SingleSelectorSegment(WildcardSelector.Instance, false));
                     }
                     else
                     {
                         string name = ParseMemberNameShorthand();
-                        segments.Add(new Segment([new NameSelector(name)], false));
+                        segments.Add(new SingleSelectorSegment(new NameSelector(name), false));
                     }
                 }
             }
@@ -145,7 +145,12 @@ internal ref struct JsonPathParser
 
         SkipWhitespace();
         Expect(']');
-        return new Segment(selectors.ToArray(), isDescendant);
+        
+        // Create SingleSelectorSegment for single selector, MultiSelectorSegment for multiple
+        if (selectors.Count == 1)
+            return new SingleSelectorSegment(selectors[0], isDescendant);
+        else
+            return new MultiSelectorSegment(selectors.ToArray(), isDescendant);
     }
 
     // ── Selectors ─────────────────────────────────────────────────────────
@@ -978,9 +983,29 @@ internal ref struct JsonPathParser
         SkipWhitespace();
         Expect(')');
 
-        var call = new FunctionCall(name, args.ToArray());
-        ValidateFunctionCall(call);
-        return call;
+        var argsArray = args.ToArray();
+        
+        // For match() and search(), compile regex at parse time if second arg is a literal
+        if ((name == "match" || name == "search") && argsArray.Length == 2 && argsArray[1] is LiteralArgument lit)
+        {
+            var compiledRegex = TryCompileRegexForFunction(lit.Value, name == "match");
+            if (name == "match")
+            {
+                var call = new MatchFunctionCall(argsArray, compiledRegex);
+                ValidateFunctionCall(call);
+                return call;
+            }
+            else // search
+            {
+                var call = new SearchFunctionCall(argsArray, compiledRegex);
+                ValidateFunctionCall(call);
+                return call;
+            }
+        }
+        
+        var standardCall = new StandardFunctionCall(name, argsArray);
+        ValidateFunctionCall(standardCall);
+        return standardCall;
     }
 
     private IFunctionArgument ParseFunctionArgument(string funcName, int paramIndex)
@@ -1013,8 +1038,8 @@ internal ref struct JsonPathParser
                 return new FilterQueryArgument(new FilterQuery(sq.IsRelative,
                     sq.Segments.Select<SingularSegment, Segment>(s => s switch
                     {
-                        SingularNameSegment n => new Segment([new NameSelector(n.Name)], false),
-                        SingularIndexSegment i => new Segment([new IndexSelector(i.Index)], false),
+                        SingularNameSegment n => new SingleSelectorSegment(new NameSelector(n.Name), false),
+                        SingularIndexSegment i => new SingleSelectorSegment(new IndexSelector(i.Index), false),
                         _ => throw new InvalidOperationException()
                     }).ToArray()));
             }
@@ -1227,6 +1252,21 @@ internal ref struct JsonPathParser
         || c is >= '\x28' and <= '\x5B'  // (, ), ..., [
         || c is >= '\x5D' and <= '\uD7FF'
         || c >= '\uE000';
+
+    /// <summary>
+    /// Attempts to compile a regex pattern for match() or search() functions.
+    /// Returns null if the pattern is invalid.
+    /// </summary>
+    private static System.Text.RegularExpressions.Regex? TryCompileRegexForFunction(JsonElement? patternValue, bool isMatch)
+    {
+        if (!patternValue.HasValue || patternValue.Value.ValueKind != JsonValueKind.String)
+            return null;
+
+        string pattern = patternValue.Value.GetString()!;
+        string converted = IRegexpHelper.ConvertIRegexp(pattern);
+        string finalPattern = isMatch ? $"^(?:{converted})$" : converted;
+        return IRegexpHelper.TryCompileRegex(finalPattern);
+    }
 
     private static string EscapeJsonString(string s)
     {

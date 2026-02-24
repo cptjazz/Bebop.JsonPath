@@ -26,10 +26,23 @@ internal static class JsonPathEvaluator
             var next = new List<JsonElement>(current.Count);
             foreach (var node in current)
             {
-                if (segment.IsDescendant)
-                    EvaluateDescendantSegment(segment, in node, in root, next);
-                else
-                    EvaluateChildSegment(segment, in node, in root, next);
+                // Dispatch based on segment type and descendant flag
+                switch (segment)
+                {
+                    case SingleSelectorSegment sing:
+                        if (sing.IsDescendant)
+                            EvaluateDescendantSingularSegment(sing.Selector, in node, in root, next);
+                        else
+                            ApplySelector(sing.Selector, in node, in root, next);
+                        break;
+                        
+                    case MultiSelectorSegment multi:
+                        if (multi.IsDescendant)
+                            EvaluateDescendantMultiSegment(multi.Selectors, in node, in root, next);
+                        else
+                            EvaluateChildMultiSegment(multi.Selectors, in node, in root, next);
+                        break;
+                }
             }
             current = next;
         }
@@ -45,14 +58,19 @@ internal static class JsonPathEvaluator
     {
         foreach (var segment in segments)
         {
-            if (segment.IsDescendant || segment.Selectors.Length != 1)
+            if (segment.IsDescendant)
             {
                 result = default!;
                 return false;
             }
 
-            var selector = segment.Selectors[0];
-            if (selector is not NameSelector and not IndexSelector)
+            if (segment is not SingleSelectorSegment sing)
+            {
+                result = default!;
+                return false;
+            }
+            
+            if (sing.Selector is not NameSelector and not IndexSelector)
             {
                 result = default!;
                 return false;
@@ -62,7 +80,8 @@ internal static class JsonPathEvaluator
         var node = root;
         foreach (var segment in segments)
         {
-            switch (segment.Selectors[0])
+            var sing = (SingleSelectorSegment)segment;
+            switch (sing.Selector)
             {
                 case NameSelector ns:
                     if (node.ValueKind == JsonValueKind.Object && node.TryGetProperty(ns.Name, out var prop))
@@ -100,27 +119,70 @@ internal static class JsonPathEvaluator
         return true;
     }
 
-    private static void EvaluateChildSegment(Segment segment, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
+    private static void EvaluateChildMultiSegment(ISelector[] selectors, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
     {
-        foreach (var selector in segment.Selectors)
+        foreach (var selector in selectors)
         {
             ApplySelector(selector, in node, in root, results);
         }
     }
 
-    private static void EvaluateDescendantSegment(Segment segment, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
+    private static void EvaluateDescendantSingularSegment(ISelector selector, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
     {
         // Visit the node and all its descendants in pre-order.
-        // For each visited node, apply the child selectors.
-        var descendants = new List<JsonElement>();
-        CollectDescendants(in node, descendants);
+        // For each visited node, apply the selector.
+        CollectDescendantsAndApplySelector(in node, selector, in root, results);
+    }
 
-        foreach (var desc in descendants)
+    private static void EvaluateDescendantMultiSegment(ISelector[] selectors, ref readonly JsonElement node, ref readonly JsonElement root, List<JsonElement> results)
+    {
+        // Visit the node and all its descendants in pre-order.
+        // For each visited node, apply all selectors.
+        CollectDescendantsAndApplySelectors(in node, selectors, in root, results);
+    }
+
+    private static void CollectDescendantsAndApplySelector(ref readonly JsonElement node, ISelector selector, ref readonly JsonElement root, List<JsonElement> results)
+    {
+        // Apply selector to this node
+        ApplySelector(selector, in node, in root, results);
+
+        // Then recurse to descendants
+        if (node.ValueKind == JsonValueKind.Object)
         {
-            foreach (var selector in segment.Selectors)
+            foreach (var prop in node.EnumerateObject())
             {
-                ApplySelector(selector, in desc, in root, results);
+                JsonElement value = prop.Value;
+                CollectDescendantsAndApplySelector(in value, selector, in root, results);
             }
+        }
+        else if (node.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var elem in node.EnumerateArray())
+                CollectDescendantsAndApplySelector(in elem, selector, in root, results);
+        }
+    }
+
+    private static void CollectDescendantsAndApplySelectors(ref readonly JsonElement node, ISelector[] selectors, ref readonly JsonElement root, List<JsonElement> results)
+    {
+        // Apply selectors to this node
+        foreach (var selector in selectors)
+        {
+            ApplySelector(selector, in node, in root, results);
+        }
+
+        // Then recurse to descendants
+        if (node.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in node.EnumerateObject())
+            {
+                JsonElement value = prop.Value;
+                CollectDescendantsAndApplySelectors(in value, selectors, in root, results);
+            }
+        }
+        else if (node.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var elem in node.EnumerateArray())
+                CollectDescendantsAndApplySelectors(in elem, selectors, in root, results);
         }
     }
 
@@ -159,11 +221,15 @@ internal static class JsonPathEvaluator
             case WildcardSelector:
                 if (node.ValueKind == JsonValueKind.Object)
                 {
+                    int propCount = node.GetPropertyCount();
+                    results.EnsureCapacity(results.Count + propCount);
                     foreach (var p in node.EnumerateObject())
                         results.Add(p.Value);
                 }
                 else if (node.ValueKind == JsonValueKind.Array)
                 {
+                    int arrayLen = node.GetArrayLength();
+                    results.EnsureCapacity(results.Count + arrayLen);
                     foreach (var e in node.EnumerateArray())
                         results.Add(e);
                 }
@@ -218,15 +284,26 @@ internal static class JsonPathEvaluator
             lower = Math.Min(Math.Max(nEnd, -1), len - 1);
         }
 
+        // Pre-calculate count and pre-allocate capacity
         if (step > 0)
         {
-            for (long i = lower; i < upper; i += step)
-                results.Add(array[(int)i]);
+            if (upper > lower)
+            {
+                long count = (upper - lower + step - 1) / step;
+                results.EnsureCapacity(results.Count + (int)count);
+                for (long i = lower; i < upper; i += step)
+                    results.Add(array[(int)i]);
+            }
         }
         else
         {
-            for (long i = upper; lower < i; i += step)
-                results.Add(array[(int)i]);
+            if (upper > lower)
+            {
+                long count = (upper - lower + (-step) - 1) / (-step);
+                results.EnsureCapacity(results.Count + (int)count);
+                for (long i = upper; lower < i; i += step)
+                    results.Add(array[(int)i]);
+            }
         }
     }
 
@@ -238,6 +315,10 @@ internal static class JsonPathEvaluator
     {
         if (node.ValueKind == JsonValueKind.Array)
         {
+            int arrayLen = node.GetArrayLength();
+            int startCount = results.Count;
+            results.EnsureCapacity(startCount + arrayLen); // Reserve space for worst case
+
             foreach (var elem in node.EnumerateArray())
             {
                 if (EvalLogical(fs.Expression, elem, root))
@@ -246,6 +327,10 @@ internal static class JsonPathEvaluator
         }
         else if (node.ValueKind == JsonValueKind.Object)
         {
+            int propCount = node.GetPropertyCount();
+            int startCount = results.Count;
+            results.EnsureCapacity(startCount + propCount); // Reserve space for worst case
+
             foreach (var prop in node.EnumerateObject())
             {
                 if (EvalLogical(fs.Expression, prop.Value, root))
@@ -260,14 +345,34 @@ internal static class JsonPathEvaluator
     {
         return expr switch
         {
-            OrExpr or => or.Operands.Any(op => EvalLogical(op, current, root)),
-            AndExpr and => and.Operands.All(op => EvalLogical(op, current, root)),
+            OrExpr or => EvalOr(or, current, root),
+            AndExpr and => EvalAnd(and, current, root),
             NotExpr not => !EvalLogical(not.Operand, current, root),
             ComparisonExpr cmp => EvalComparison(cmp, current, root),
             ExistenceExpr ex => EvalExistence(ex.Query, current, root),
             FunctionTestExpr ft => EvalFunctionTest(ft.Function, current, root),
             _ => false
         };
+    }
+
+    private static bool EvalOr(OrExpr or, JsonElement current, JsonElement root)
+    {
+        foreach (var operand in or.Operands)
+        {
+            if (EvalLogical(operand, current, root))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool EvalAnd(AndExpr and, JsonElement current, JsonElement root)
+    {
+        foreach (var operand in and.Operands)
+        {
+            if (!EvalLogical(operand, current, root))
+                return false;
+        }
+        return true;
     }
 
     private static bool EvalExistence(FilterQuery query, JsonElement current, JsonElement root)
@@ -315,8 +420,8 @@ internal static class JsonPathEvaluator
                 return lit.Value.HasValue ? (true, lit.Value.Value) : (false, default);
 
             case SingularQueryComparable sq:
-                var nodes = EvalSingularQuery(sq.Query, current, root);
-                return nodes.Count == 1 ? (true, nodes[0]) : (false, default);
+                // Optimize: avoid allocating a list for singular queries
+                return TryEvalSingularQuery(sq.Query, current, root);
 
             case FunctionComparable fc:
                 var (_, funcResult) = EvalFunction(fc.Function, current, root);
@@ -329,11 +434,77 @@ internal static class JsonPathEvaluator
         }
     }
 
+    // Optimized version that doesn't allocate a list
+    private static (bool HasValue, JsonElement Value) TryEvalSingularQuery(SingularQuery query, JsonElement current, JsonElement root)
+    {
+        var node = query.IsRelative ? current : root;
+
+        foreach (var seg in query.Segments)
+        {
+            switch (seg)
+            {
+                case SingularNameSegment ns:
+                    if (node.ValueKind == JsonValueKind.Object && node.TryGetProperty(ns.Name, out var prop))
+                        node = prop;
+                    else
+                        return (false, default);
+                    break;
+
+                case SingularIndexSegment ix:
+                    if (node.ValueKind == JsonValueKind.Array)
+                    {
+                        int len = node.GetArrayLength();
+                        long effective = ix.Index >= 0 ? ix.Index : len + ix.Index;
+                        if (effective >= 0 && effective < len)
+                            node = node[(int)effective];
+                        else
+                            return (false, default);
+                    }
+                    else
+                    {
+                        return (false, default);
+                    }
+                    break;
+            }
+        }
+
+        return (true, node);
+    }
+
     private static bool CmpEquals(bool leftHas, JsonElement left, bool rightHas, JsonElement right)
     {
         if (!leftHas && !rightHas) return true;
         if (!leftHas || !rightHas) return false;
-        return DeepEquals(left, right);
+        
+        // Fast path for common primitive comparisons
+        var leftKind = left.ValueKind;
+        var rightKind = right.ValueKind;
+        
+        if (leftKind != rightKind) 
+            return false;
+
+        switch (leftKind)
+        {
+            case JsonValueKind.Null:
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                return true;
+                
+            case JsonValueKind.Number:
+                return CompareNumbers(left, right);
+                
+            case JsonValueKind.String:
+                return left.GetString() == right.GetString();
+                
+            case JsonValueKind.Array:
+                return ArrayDeepEquals(left, right);
+                
+            case JsonValueKind.Object:
+                return ObjectDeepEquals(left, right);
+                
+            default:
+                return false;
+        }
     }
 
     private static bool CmpLessThan(bool leftHas, JsonElement left, bool rightHas, JsonElement right)
@@ -343,6 +514,10 @@ internal static class JsonPathEvaluator
         // Only numbers vs numbers, or strings vs strings
         if (left.ValueKind == JsonValueKind.Number && right.ValueKind == JsonValueKind.Number)
         {
+            // Fast path for integers
+            if (left.TryGetInt32(out var leftInt) && right.TryGetInt32(out var rightInt))
+                return leftInt < rightInt;
+            
             return left.GetDouble() < right.GetDouble();
         }
 
@@ -373,6 +548,10 @@ internal static class JsonPathEvaluator
 
     private static bool CompareNumbers(JsonElement a, JsonElement b)
     {
+        // Fast path for integers
+        if (a.TryGetInt32(out var aInt) && b.TryGetInt32(out var bInt))
+            return aInt == bInt;
+
         // Try decimal for exact comparison first, fall back to double
         if (a.TryGetDecimal(out var ad) && b.TryGetDecimal(out var bd))
             return ad == bd;
@@ -397,23 +576,25 @@ internal static class JsonPathEvaluator
 
     private static bool ObjectDeepEquals(JsonElement a, JsonElement b)
     {
-        var aDict = new Dictionary<string, JsonElement>();
+        int aCount = a.GetPropertyCount();
+        int bCount = b.GetPropertyCount();
+        
+        if (aCount != bCount) 
+            return false;
+
+        // Build dictionary only for 'a', then look up in 'b'
+        var aDict = new Dictionary<string, JsonElement>(aCount);
         foreach (var p in a.EnumerateObject())
             aDict[p.Name] = p.Value;
 
-        var bDict = new Dictionary<string, JsonElement>();
-        foreach (var p in b.EnumerateObject())
-            bDict[p.Name] = p.Value;
-
-        if (aDict.Count != bDict.Count) return false;
-
-        foreach (var (key, aVal) in aDict)
+        foreach (var bProp in b.EnumerateObject())
         {
-            if (!bDict.TryGetValue(key, out var bVal))
+            if (!aDict.TryGetValue(bProp.Name, out var aVal))
                 return false;
-            if (!DeepEquals(aVal, bVal))
+            if (!DeepEquals(aVal, bProp.Value))
                 return false;
         }
+        
         return true;
     }
 
@@ -426,13 +607,26 @@ internal static class JsonPathEvaluator
 
         foreach (var segment in query.Segments)
         {
-            var next = new List<JsonElement>();
+            var next = new List<JsonElement>(nodes.Count * 2); // Estimate capacity
             foreach (var node in nodes)
             {
-                if (segment.IsDescendant)
-                    EvaluateDescendantSegment(segment, in node, in root, next);
-                else
-                    EvaluateChildSegment(segment, in node, in root, next);
+                // Dispatch based on segment type
+                switch (segment)
+                {
+                    case SingleSelectorSegment sing:
+                        if (sing.IsDescendant)
+                            EvaluateDescendantSingularSegment(sing.Selector, in node, in root, next);
+                        else
+                            ApplySelector(sing.Selector, in node, in root, next);
+                        break;
+                        
+                    case MultiSelectorSegment multi:
+                        if (multi.IsDescendant)
+                            EvaluateDescendantMultiSegment(multi.Selectors, in node, in root, next);
+                        else
+                            EvaluateChildMultiSegment(multi.Selectors, in node, in root, next);
+                        break;
+                }
             }
             nodes = next;
         }
@@ -480,14 +674,19 @@ internal static class JsonPathEvaluator
 
     private static (FunctionResultType Type, object? Value) EvalFunction(FunctionCall func, JsonElement current, JsonElement root)
     {
-        return func.Name switch
+        return func switch
         {
-            "length" => EvalLength(func, current, root),
-            "count" => EvalCount(func, current, root),
-            "match" => EvalMatch(func, current, root),
-            "search" => EvalSearch(func, current, root),
-            "value" => EvalValueFunc(func, current, root),
-            _ => (FunctionResultType.ValueType, null)
+            MatchFunctionCall match => EvalMatch(match, current, root),
+            SearchFunctionCall search => EvalSearch(search, current, root),
+            _ => func.Name switch
+            {
+                "length" => EvalLength(func, current, root),
+                "count" => EvalCount(func, current, root),
+                "match" => EvalMatchDynamic(func, current, root),
+                "search" => EvalSearchDynamic(func, current, root),
+                "value" => EvalValueFunc(func, current, root),
+                _ => (FunctionResultType.ValueType, null)
+            }
         };
     }
 
@@ -514,23 +713,44 @@ internal static class JsonPathEvaluator
         return (FunctionResultType.ValueType, MakeJsonNumber(nodes.Count));
     }
 
-    private static (FunctionResultType, object?) EvalMatch(FunctionCall func, JsonElement current, JsonElement root)
+    private static (FunctionResultType, object?) EvalMatch(MatchFunctionCall func, JsonElement current, JsonElement root)
     {
         var first = ResolveValueTypeArgument(func.Arguments[0], current, root);
-        var second = ResolveValueTypeArgument(func.Arguments[1], current, root);
 
-        if (first is not JsonElement el1 || el1.ValueKind != JsonValueKind.String
-            || second is not JsonElement el2 || el2.ValueKind != JsonValueKind.String)
+        if (first is not JsonElement el1 || el1.ValueKind != JsonValueKind.String)
             return (FunctionResultType.LogicalType, false);
 
         string input = el1.GetString()!;
-        string pattern = el2.GetString()!;
 
+        // Use pre-compiled regex if available
+        if (func.CompiledRegex != null)
+        {
+            try
+            {
+                bool matches = func.CompiledRegex.IsMatch(input);
+                return (FunctionResultType.LogicalType, matches);
+            }
+            catch
+            {
+                return (FunctionResultType.LogicalType, false);
+            }
+        }
+
+        // Fallback: pattern is dynamic (shouldn't happen if second arg is literal)
+        var second = ResolveValueTypeArgument(func.Arguments[1], current, root);
+        if (second is not JsonElement el2 || el2.ValueKind != JsonValueKind.String)
+            return (FunctionResultType.LogicalType, false);
+
+        string pattern = el2.GetString()!;
         try
         {
-            string converted = ConvertIRegexp(pattern);
+            string converted = IRegexpHelper.ConvertIRegexp(pattern);
             string anchored = $"^(?:{converted})$";
-            bool matches = Regex.IsMatch(input, anchored, RegexOptions.None, TimeSpan.FromSeconds(1));
+            var regex = IRegexpHelper.TryGetCachedRegex(anchored);
+            if (regex == null)
+                return (FunctionResultType.LogicalType, false);
+
+            bool matches = regex.IsMatch(input);
             return (FunctionResultType.LogicalType, matches);
         }
         catch
@@ -539,22 +759,43 @@ internal static class JsonPathEvaluator
         }
     }
 
-    private static (FunctionResultType, object?) EvalSearch(FunctionCall func, JsonElement current, JsonElement root)
+    private static (FunctionResultType, object?) EvalSearch(SearchFunctionCall func, JsonElement current, JsonElement root)
     {
         var first = ResolveValueTypeArgument(func.Arguments[0], current, root);
-        var second = ResolveValueTypeArgument(func.Arguments[1], current, root);
 
-        if (first is not JsonElement el1 || el1.ValueKind != JsonValueKind.String
-            || second is not JsonElement el2 || el2.ValueKind != JsonValueKind.String)
+        if (first is not JsonElement el1 || el1.ValueKind != JsonValueKind.String)
             return (FunctionResultType.LogicalType, false);
 
         string input = el1.GetString()!;
-        string pattern = el2.GetString()!;
 
+        // Use pre-compiled regex if available
+        if (func.CompiledRegex != null)
+        {
+            try
+            {
+                bool found = func.CompiledRegex.IsMatch(input);
+                return (FunctionResultType.LogicalType, found);
+            }
+            catch
+            {
+                return (FunctionResultType.LogicalType, false);
+            }
+        }
+
+        // Fallback: pattern is dynamic (shouldn't happen if second arg is literal)
+        var second = ResolveValueTypeArgument(func.Arguments[1], current, root);
+        if (second is not JsonElement el2 || el2.ValueKind != JsonValueKind.String)
+            return (FunctionResultType.LogicalType, false);
+
+        string pattern = el2.GetString()!;
         try
         {
-            string converted = ConvertIRegexp(pattern);
-            bool found = Regex.IsMatch(input, converted, RegexOptions.None, TimeSpan.FromSeconds(1));
+            string converted = IRegexpHelper.ConvertIRegexp(pattern);
+            var regex = IRegexpHelper.TryGetCachedRegex(converted);
+            if (regex == null)
+                return (FunctionResultType.LogicalType, false);
+
+            bool found = regex.IsMatch(input);
             return (FunctionResultType.LogicalType, found);
         }
         catch
@@ -564,53 +805,66 @@ internal static class JsonPathEvaluator
     }
 
     /// <summary>
-    /// Converts an I-Regexp (RFC 9485) pattern to a .NET Regex pattern.
-    /// In I-Regexp, <c>.</c> matches any code point except <c>\n</c> and <c>\r</c>,
-    /// including supplementary plane characters (surrogate pairs in UTF-16).
+    /// Evaluates match() when the pattern is not a compile-time literal.
     /// </summary>
-    private static string ConvertIRegexp(string pattern)
+    private static (FunctionResultType, object?) EvalMatchDynamic(FunctionCall func, JsonElement current, JsonElement root)
     {
-        var sb = new StringBuilder(pattern.Length * 2);
-        bool inCharClass = false;
+        var first = ResolveValueTypeArgument(func.Arguments[0], current, root);
+        var second = ResolveValueTypeArgument(func.Arguments[1], current, root);
 
-        for (int i = 0; i < pattern.Length; i++)
+        if (first is not JsonElement el1 || el1.ValueKind != JsonValueKind.String
+            || second is not JsonElement el2 || el2.ValueKind != JsonValueKind.String)
+            return (FunctionResultType.LogicalType, false);
+
+        string input = el1.GetString()!;
+        string pattern = el2.GetString()!;
+
+        try
         {
-            char c = pattern[i];
+            string converted = IRegexpHelper.ConvertIRegexp(pattern);
+            string anchored = $"^(?:{converted})$";
+            var regex = IRegexpHelper.TryGetCachedRegex(anchored);
+            if (regex == null)
+                return (FunctionResultType.LogicalType, false);
 
-            if (c == '\\' && i + 1 < pattern.Length)
-            {
-                // Escaped character — pass through as-is
-                sb.Append(c);
-                sb.Append(pattern[i + 1]);
-                i++;
-                continue;
-            }
-
-            if (c == '[' && !inCharClass)
-            {
-                inCharClass = true;
-                sb.Append(c);
-                continue;
-            }
-
-            if (c == ']' && inCharClass)
-            {
-                inCharClass = false;
-                sb.Append(c);
-                continue;
-            }
-
-            if (c == '.' && !inCharClass)
-            {
-                // I-Regexp dot: any code point except \n and \r, including surrogates
-                sb.Append("(?:[^\\n\\r\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])");
-                continue;
-            }
-
-            sb.Append(c);
+            bool matches = regex.IsMatch(input);
+            return (FunctionResultType.LogicalType, matches);
         }
+        catch
+        {
+            return (FunctionResultType.LogicalType, false);
+        }
+    }
 
-        return sb.ToString();
+    /// <summary>
+    /// Evaluates search() when the pattern is not a compile-time literal.
+    /// </summary>
+    private static (FunctionResultType, object?) EvalSearchDynamic(FunctionCall func, JsonElement current, JsonElement root)
+    {
+        var first = ResolveValueTypeArgument(func.Arguments[0], current, root);
+        var second = ResolveValueTypeArgument(func.Arguments[1], current, root);
+
+        if (first is not JsonElement el1 || el1.ValueKind != JsonValueKind.String
+            || second is not JsonElement el2 || el2.ValueKind != JsonValueKind.String)
+            return (FunctionResultType.LogicalType, false);
+
+        string input = el1.GetString()!;
+        string pattern = el2.GetString()!;
+
+        try
+        {
+            string converted = IRegexpHelper.ConvertIRegexp(pattern);
+            var regex = IRegexpHelper.TryGetCachedRegex(converted);
+            if (regex == null)
+                return (FunctionResultType.LogicalType, false);
+
+            bool found = regex.IsMatch(input);
+            return (FunctionResultType.LogicalType, found);
+        }
+        catch
+        {
+            return (FunctionResultType.LogicalType, false);
+        }
     }
 
     private static (FunctionResultType, object?) EvalValueFunc(FunctionCall func, JsonElement current, JsonElement root)
@@ -663,8 +917,23 @@ internal static class JsonPathEvaluator
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
+    // Cache for small integers to avoid repeated JsonDocument.Parse calls
+    private static readonly JsonElement[] _cachedNumbers = CreateCachedNumbers();
+
+    private static JsonElement[] CreateCachedNumbers()
+    {
+        var cache = new JsonElement[256];
+        for (int i = 0; i < 256; i++)
+        {
+            cache[i] = JsonDocument.Parse(i.ToString()).RootElement.Clone();
+        }
+        return cache;
+    }
+
     private static JsonElement MakeJsonNumber(int value)
     {
+        if (value >= 0 && value < 256)
+            return _cachedNumbers[value];
         return JsonDocument.Parse(value.ToString()).RootElement.Clone();
     }
 

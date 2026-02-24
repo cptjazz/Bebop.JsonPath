@@ -4,7 +4,17 @@ namespace Bebop.JsonPath.Internal;
 
 // ── Segments ──────────────────────────────────────────────────────────────────
 
-internal sealed record Segment(ISelector[] Selectors, bool IsDescendant);
+internal abstract record Segment(bool IsDescendant);
+
+/// <summary>
+/// Segment with a single selector - optimized path without array iteration.
+/// </summary>
+internal sealed record SingleSelectorSegment(ISelector Selector, bool IsDescendant) : Segment(IsDescendant);
+
+/// <summary>
+/// Segment with multiple selectors - requires iteration.
+/// </summary>
+internal sealed record MultiSelectorSegment(ISelector[] Selectors, bool IsDescendant) : Segment(IsDescendant);
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
 
@@ -60,7 +70,26 @@ internal sealed record SingularIndexSegment(long Index) : SingularSegment;
 
 // ── Function Calls ────────────────────────────────────────────────────────────
 
-internal sealed record FunctionCall(string Name, IFunctionArgument[] Arguments);
+internal abstract record FunctionCall(string Name, IFunctionArgument[] Arguments);
+
+/// <summary>
+/// Standard function call without pre-compiled data.
+/// </summary>
+internal sealed record StandardFunctionCall(string Name, IFunctionArgument[] Arguments) : FunctionCall(Name, Arguments);
+
+/// <summary>
+/// Function call for match() with pre-compiled regex.
+/// Pattern is anchored (^...$) for full string matching.
+/// </summary>
+internal sealed record MatchFunctionCall(IFunctionArgument[] Arguments, System.Text.RegularExpressions.Regex? CompiledRegex) 
+    : FunctionCall("match", Arguments);
+
+/// <summary>
+/// Function call for search() with pre-compiled regex.
+/// Pattern is unanchored for substring matching.
+/// </summary>
+internal sealed record SearchFunctionCall(IFunctionArgument[] Arguments, System.Text.RegularExpressions.Regex? CompiledRegex) 
+    : FunctionCall("search", Arguments);
 
 internal interface IFunctionArgument;
 internal sealed record LiteralArgument(JsonElement? Value) : IFunctionArgument;
