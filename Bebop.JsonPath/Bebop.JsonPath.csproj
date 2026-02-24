@@ -1,9 +1,30 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>Bebop.JsonPath</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Alexander Jesner</Authors>
+    <Company>Alexander Jesner</Company>
+    <Description>RFC 9535 compliant JSONPath implementation for .NET</Description>
+    <PackageTags>jsonpath;json;query;rfc9535</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/cptjazz/Bebop.JsonPath</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/cptjazz/Bebop.JsonPath</PackageProjectUrl>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tests.Bebop.JsonPath" />
+    <InternalsVisibleTo Include="Tests.Bebop.JsonPath.Net8" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="System.Text.Json" Version="10.0.0" />
+  </ItemGroup>
 
 </Project>

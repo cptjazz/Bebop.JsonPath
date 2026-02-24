@@ -2,4 +2,5 @@
   <Project Path="Bebop.JsonPath/Bebop.JsonPath.csproj" />
   <Project Path="Benchmarks.Bebop.JsonPath/Benchmarks.Bebop.JsonPath.csproj" />
   <Project Path="Tests.Bebop.JsonPath/Tests.Bebop.JsonPath.csproj" Id="d7ed3458-4d24-4608-9a02-b312f07bf38e" />
+  <Project Path="Tests.Bebop.JsonPath.Net8/Tests.Bebop.JsonPath.Net8.csproj" />
 </Solution>
