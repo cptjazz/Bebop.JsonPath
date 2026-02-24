@@ -208,7 +208,7 @@ var path2 = JsonPath.Root
 - `object? Evaluate(JsonElement jsonDocument)` - Evaluates the query and returns a `JsonElement[]` or `null`
 - `bool TryEvaluate(JsonElement jsonDocument, out object? result)` - Tries to evaluate the query
 - `JsonPath Property(string propertyName)` - Appends a property (name) selector
-- `JsonPath Index(int index)` - Appends an array index selector
+- `JsonPath Index(int index)` - Appends an index selector
 - `string ToString()` - Returns the original query string
 
 ## RFC 9535 Compliance
