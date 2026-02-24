@@ -18,6 +18,11 @@
     <PackageProjectUrl>https://github.com/cptjazz/Bebop.JsonPath</PackageProjectUrl>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tests.Bebop.JsonPath" />
+    <InternalsVisibleTo Include="Tests.Bebop.JsonPath.Net8" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
     <PackageReference Include="System.Text.Json" Version="10.0.0" />
   </ItemGroup>

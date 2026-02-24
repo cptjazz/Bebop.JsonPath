@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <EnableMicrosoftTestingExtensionsCodeCoverage>true</EnableMicrosoftTestingExtensionsCodeCoverage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.*" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="17.*" />
+    <PackageReference Include="xunit.v3" Version="3.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bebop.JsonPath\Bebop.JsonPath.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- Link all C# files from the main test project -->
+  <ItemGroup>
+    <Compile Include="..\Tests.Bebop.JsonPath\*.cs" Link="%(Filename)%(Extension)" />
+    <Compile Include="..\Tests.Bebop.JsonPath\Compliance\*.cs" Link="Compliance\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- Link jsonpath-compliance-test-suite submodule -->
+  <ItemGroup>
+    <Content Include="..\Tests.Bebop.JsonPath\jsonpath-compliance-test-suite\tests\**\*.json" CopyToOutputDirectory="PreserveNewest" LinkBase="cts\tests" />
+    <Content Include="..\Tests.Bebop.JsonPath\jsonpath-compliance-test-suite\cts.json" CopyToOutputDirectory="PreserveNewest" Link="cts\cts.json" />
+  </ItemGroup>
+
+</Project>
