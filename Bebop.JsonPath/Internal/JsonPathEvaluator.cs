@@ -744,9 +744,9 @@ internal static class JsonPathEvaluator
         string pattern = el2.GetString()!;
         try
         {
-            string converted = ConvertIRegexp(pattern);
+            string converted = IRegexpHelper.ConvertIRegexp(pattern);
             string anchored = $"^(?:{converted})$";
-            var regex = TryGetCachedRegex(anchored);
+            var regex = IRegexpHelper.TryGetCachedRegex(anchored);
             if (regex == null)
                 return (FunctionResultType.LogicalType, false);
 
@@ -790,8 +790,8 @@ internal static class JsonPathEvaluator
         string pattern = el2.GetString()!;
         try
         {
-            string converted = ConvertIRegexp(pattern);
-            var regex = TryGetCachedRegex(converted);
+            string converted = IRegexpHelper.ConvertIRegexp(pattern);
+            var regex = IRegexpHelper.TryGetCachedRegex(converted);
             if (regex == null)
                 return (FunctionResultType.LogicalType, false);
 
@@ -821,9 +821,9 @@ internal static class JsonPathEvaluator
 
         try
         {
-            string converted = ConvertIRegexp(pattern);
+            string converted = IRegexpHelper.ConvertIRegexp(pattern);
             string anchored = $"^(?:{converted})$";
-            var regex = TryGetCachedRegex(anchored);
+            var regex = IRegexpHelper.TryGetCachedRegex(anchored);
             if (regex == null)
                 return (FunctionResultType.LogicalType, false);
 
@@ -853,8 +853,8 @@ internal static class JsonPathEvaluator
 
         try
         {
-            string converted = ConvertIRegexp(pattern);
-            var regex = TryGetCachedRegex(converted);
+            string converted = IRegexpHelper.ConvertIRegexp(pattern);
+            var regex = IRegexpHelper.TryGetCachedRegex(converted);
             if (regex == null)
                 return (FunctionResultType.LogicalType, false);
 
@@ -864,67 +864,6 @@ internal static class JsonPathEvaluator
         catch
         {
             return (FunctionResultType.LogicalType, false);
-        }
-    }
-
-    /// <summary>
-    /// Converts an I-Regexp (RFC 9485) pattern to a .NET Regex pattern.
-    /// In I-Regexp, <c>.</c> matches any code point except <c>\n</c> and <c>\r</c>,
-    /// including supplementary plane characters (surrogate pairs in UTF-16).
-    /// </summary>
-    private static string ConvertIRegexp(string pattern)
-    {
-        lock (_iregexpConversionCache)
-        {
-            if (_iregexpConversionCache.TryGetValue(pattern, out var cached))
-                return cached;
-
-            if (_iregexpConversionCache.Count >= MaxIRegexpCacheSize)
-                _iregexpConversionCache.Clear();
-
-            var sb = new StringBuilder(pattern.Length * 2);
-            bool inCharClass = false;
-
-            for (int i = 0; i < pattern.Length; i++)
-            {
-                char c = pattern[i];
-
-                if (c == '\\' && i + 1 < pattern.Length)
-                {
-                    // Escaped character — pass through as-is
-                    sb.Append(c);
-                    sb.Append(pattern[i + 1]);
-                    i++;
-                    continue;
-                }
-
-                if (c == '[' && !inCharClass)
-                {
-                    inCharClass = true;
-                    sb.Append(c);
-                    continue;
-                }
-
-                if (c == ']' && inCharClass)
-                {
-                    inCharClass = false;
-                    sb.Append(c);
-                    continue;
-                }
-
-                if (c == '.' && !inCharClass)
-                {
-                    // I-Regexp dot: any code point except \n and \r, including surrogates
-                    sb.Append("(?:[^\\n\\r\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])");
-                    continue;
-                }
-
-                sb.Append(c);
-            }
-
-            var result = sb.ToString();
-            _iregexpConversionCache[pattern] = result;
-            return result;
         }
     }
 
@@ -980,14 +919,6 @@ internal static class JsonPathEvaluator
 
     // Cache for small integers to avoid repeated JsonDocument.Parse calls
     private static readonly JsonElement[] _cachedNumbers = CreateCachedNumbers();
-    
-    // Cache for compiled regexes
-    private static readonly Dictionary<string, Regex?> _regexCache = new();
-    private const int MaxRegexCacheSize = 100;
-    
-    // Cache for I-Regexp to .NET Regex pattern conversion
-    private static readonly Dictionary<string, string> _iregexpConversionCache = new();
-    private const int MaxIRegexpCacheSize = 100;
 
     private static JsonElement[] CreateCachedNumbers()
     {
@@ -1004,30 +935,6 @@ internal static class JsonPathEvaluator
         if (value >= 0 && value < 256)
             return _cachedNumbers[value];
         return JsonDocument.Parse(value.ToString()).RootElement.Clone();
-    }
-
-    private static Regex? TryGetCachedRegex(string pattern)
-    {
-        lock (_regexCache)
-        {
-            if (_regexCache.TryGetValue(pattern, out var regex))
-                return regex;
-
-            if (_regexCache.Count >= MaxRegexCacheSize)
-                _regexCache.Clear(); // Simple eviction strategy
-
-            try
-            {
-                regex = new Regex(pattern, RegexOptions.Compiled, TimeSpan.FromSeconds(1));
-                _regexCache[pattern] = regex;
-                return regex;
-            }
-            catch
-            {
-                _regexCache[pattern] = null;
-                return null;
-            }
-        }
     }
 
     private static int CountObjectMembers(JsonElement obj)

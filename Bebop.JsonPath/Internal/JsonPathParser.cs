@@ -1263,72 +1263,9 @@ internal ref struct JsonPathParser
             return null;
 
         string pattern = patternValue.Value.GetString()!;
-        
-        try
-        {
-            string converted = ConvertIRegexp(pattern);
-            string finalPattern = isMatch ? $"^(?:{converted})$" : converted;
-            
-            return new System.Text.RegularExpressions.Regex(
-                finalPattern, 
-                System.Text.RegularExpressions.RegexOptions.Compiled, 
-                TimeSpan.FromSeconds(1));
-        }
-        catch
-        {
-            // Invalid regex pattern
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Converts an I-Regexp (RFC 9485) pattern to a .NET Regex pattern.
-    /// In I-Regexp, <c>.</c> matches any code point except <c>\n</c> and <c>\r</c>,
-    /// including supplementary plane characters (surrogate pairs in UTF-16).
-    /// </summary>
-    private static string ConvertIRegexp(string pattern)
-    {
-        var sb = new StringBuilder(pattern.Length * 2);
-        bool inCharClass = false;
-
-        for (int i = 0; i < pattern.Length; i++)
-        {
-            char c = pattern[i];
-
-            if (c == '\\' && i + 1 < pattern.Length)
-            {
-                // Escaped character — pass through as-is
-                sb.Append(c);
-                sb.Append(pattern[i + 1]);
-                i++;
-                continue;
-            }
-
-            if (c == '[' && !inCharClass)
-            {
-                inCharClass = true;
-                sb.Append(c);
-                continue;
-            }
-
-            if (c == ']' && inCharClass)
-            {
-                inCharClass = false;
-                sb.Append(c);
-                continue;
-            }
-
-            if (c == '.' && !inCharClass)
-            {
-                // I-Regexp dot: any code point except \n and \r, including surrogates
-                sb.Append("(?:[^\\n\\r\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])");
-                continue;
-            }
-
-            sb.Append(c);
-        }
-
-        return sb.ToString();
+        string converted = IRegexpHelper.ConvertIRegexp(pattern);
+        string finalPattern = isMatch ? $"^(?:{converted})$" : converted;
+        return IRegexpHelper.TryCompileRegex(finalPattern);
     }
 
     private static string EscapeJsonString(string s)
