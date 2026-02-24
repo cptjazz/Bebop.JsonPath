@@ -9,22 +9,12 @@ namespace Tests.Bebop.JsonPath;
 public sealed class JsonPathRootTests
 {
     [Fact]
-    public void Root_ReturnsValidJsonPath()
-    {
-        // Act
-        var root = JsonPathType.Root;
-
-        // Assert - JsonPath is a struct, so just verify we can access it
-        Assert.Equal("$", root.ToString());
-    }
-
-    [Fact]
     public void Root_ToStringReturnsDollar()
     {
         // Act
         var root = JsonPathType.Root;
 
-        // Assert
+        // Assert - Verify Root is initialized and returns correct string
         Assert.Equal("$", root.ToString());
     }
 
