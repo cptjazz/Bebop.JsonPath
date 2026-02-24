@@ -15,6 +15,11 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     }
 
     /// <summary>
+    /// Gets a <see cref="JsonPath"/> representing the root identifier "$".
+    /// </summary>
+    public static JsonPath Root { get; } = new JsonPath([], "$");
+
+    /// <summary>
     /// Parses an RFC 9535 JSONPath query string.
     /// </summary>
     /// <exception cref="FormatException">The query is not well-formed or not valid.</exception>
