@@ -177,19 +177,30 @@ var path5 = JsonPath.Parse("$.config[?value(@..enabled) == true]");
 ### Programmatic Construction
 
 ```csharp
-// Build paths programmatically
+// Build paths programmatically using Parse
 var path = JsonPath.Parse("$")
     .Property("store")
     .Property("book")
     .ArrayIndex(0)
     .Property("title");
 
-// Equivalent to: $.store.book[0].title
+// Or using the Root property
+var path2 = JsonPath.Root
+    .Property("store")
+    .Property("book")
+    .ArrayIndex(0)
+    .Property("title");
+
+// Both are equivalent to: $.store.book[0].title
 ```
 
 ## API Reference
 
 ### `JsonPath` Struct
+
+#### Properties
+
+- `static JsonPath Root` - Gets a JsonPath representing the root identifier "$"
 
 #### Methods
 
