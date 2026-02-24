@@ -181,7 +181,7 @@ var path5 = JsonPath.Parse("$.config[?value(@..enabled) == true]");
 var path = JsonPath.Parse("$")
     .Property("store")
     .Property("book")
-    .ArrayIndex(0)
+    .Index(0)
     .Property("title");
 
 // Or using the Root property
@@ -208,7 +208,7 @@ var path2 = JsonPath.Root
 - `object? Evaluate(JsonElement jsonDocument)` - Evaluates the query and returns a `JsonElement[]` or `null`
 - `bool TryEvaluate(JsonElement jsonDocument, out object? result)` - Tries to evaluate the query
 - `JsonPath Property(string propertyName)` - Appends a property (name) selector
-- `JsonPath ArrayIndex(int index)` - Appends an array index selector
+- `JsonPath Index(int index)` - Appends an array index selector
 - `string ToString()` - Returns the original query string
 
 ## RFC 9535 Compliance
