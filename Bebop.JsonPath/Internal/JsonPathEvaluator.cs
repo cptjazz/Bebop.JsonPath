@@ -143,46 +143,65 @@ internal static class JsonPathEvaluator
 
     private static void CollectDescendantsAndApplySelector(ref readonly JsonElement node, ISelector selector, ref readonly JsonElement root, List<JsonElement> results)
     {
-        // Apply selector to this node
-        ApplySelector(selector, in node, in root, results);
+        // Iterative pre-order traversal using a stack to avoid recursion overhead.
+        var stack = new Stack<JsonElement>();
+        stack.Push(node);
 
-        // Then recurse to descendants
-        if (node.ValueKind == JsonValueKind.Object)
+        while (stack.Count > 0)
         {
-            foreach (var prop in node.EnumerateObject())
+            var current = stack.Pop();
+
+            // Apply selector to current node
+            ApplySelector(selector, in current, in root, results);
+
+            // Push children in reverse order so they are processed left-to-right
+            if (current.ValueKind == JsonValueKind.Array)
             {
-                JsonElement value = prop.Value;
-                CollectDescendantsAndApplySelector(in value, selector, in root, results);
+                int len = current.GetArrayLength();
+                for (int i = len - 1; i >= 0; i--)
+                    stack.Push(current[i]);
             }
-        }
-        else if (node.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var elem in node.EnumerateArray())
-                CollectDescendantsAndApplySelector(in elem, selector, in root, results);
+            else if (current.ValueKind == JsonValueKind.Object)
+            {
+                // We need to push in reverse order; collect to a local list first
+                var props = new List<JsonElement>(current.GetPropertyCount());
+                foreach (var prop in current.EnumerateObject())
+                    props.Add(prop.Value);
+                for (int i = props.Count - 1; i >= 0; i--)
+                    stack.Push(props[i]);
+            }
         }
     }
 
     private static void CollectDescendantsAndApplySelectors(ref readonly JsonElement node, ISelector[] selectors, ref readonly JsonElement root, List<JsonElement> results)
     {
-        // Apply selectors to this node
-        foreach (var selector in selectors)
-        {
-            ApplySelector(selector, in node, in root, results);
-        }
+        // Iterative pre-order traversal using a stack to avoid recursion overhead.
+        var stack = new Stack<JsonElement>();
+        stack.Push(node);
 
-        // Then recurse to descendants
-        if (node.ValueKind == JsonValueKind.Object)
+        while (stack.Count > 0)
         {
-            foreach (var prop in node.EnumerateObject())
+            var current = stack.Pop();
+
+            // Apply all selectors to current node
+            foreach (var selector in selectors)
+                ApplySelector(selector, in current, in root, results);
+
+            // Push children in reverse order so they are processed left-to-right
+            if (current.ValueKind == JsonValueKind.Array)
             {
-                JsonElement value = prop.Value;
-                CollectDescendantsAndApplySelectors(in value, selectors, in root, results);
+                int len = current.GetArrayLength();
+                for (int i = len - 1; i >= 0; i--)
+                    stack.Push(current[i]);
             }
-        }
-        else if (node.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var elem in node.EnumerateArray())
-                CollectDescendantsAndApplySelectors(in elem, selectors, in root, results);
+            else if (current.ValueKind == JsonValueKind.Object)
+            {
+                var props = new List<JsonElement>(current.GetPropertyCount());
+                foreach (var prop in current.EnumerateObject())
+                    props.Add(prop.Value);
+                for (int i = props.Count - 1; i >= 0; i--)
+                    stack.Push(props[i]);
+            }
         }
     }
 
@@ -377,6 +396,34 @@ internal static class JsonPathEvaluator
 
     private static bool EvalExistence(FilterQuery query, JsonElement current, JsonElement root)
     {
+        // Fast path: single non-descendant segment with a name or index selector.
+        // This is the most common case: @.property or @[index].
+        // Avoid allocating a List<JsonElement> just to check Count > 0.
+        if (query.Segments is [SingleSelectorSegment { IsDescendant: false } seg])
+        {
+            var startNode = query.IsRelative ? current : root;
+            switch (seg.Selector)
+            {
+                case NameSelector ns:
+                    return startNode.ValueKind == JsonValueKind.Object
+                        && startNode.TryGetProperty(ns.Name, out _);
+
+                case IndexSelector ix:
+                    if (startNode.ValueKind != JsonValueKind.Array) return false;
+                    int len = startNode.GetArrayLength();
+                    long effective = ix.Index >= 0 ? ix.Index : len + ix.Index;
+                    return effective >= 0 && effective < len;
+
+                case WildcardSelector:
+                    return startNode.ValueKind switch
+                    {
+                        JsonValueKind.Object => startNode.GetPropertyCount() > 0,
+                        JsonValueKind.Array => startNode.GetArrayLength() > 0,
+                        _ => false
+                    };
+            }
+        }
+
         var nodes = EvalFilterQuery(query, current, root);
         return nodes.Count > 0;
     }
@@ -405,9 +452,11 @@ internal static class JsonPathEvaluator
             ComparisonOp.Eq => CmpEquals(leftHasValue, leftValue, rightHasValue, rightValue),
             ComparisonOp.Ne => !CmpEquals(leftHasValue, leftValue, rightHasValue, rightValue),
             ComparisonOp.Lt => CmpLessThan(leftHasValue, leftValue, rightHasValue, rightValue),
-            ComparisonOp.Le => CmpLessThan(leftHasValue, leftValue, rightHasValue, rightValue) || CmpEquals(leftHasValue, leftValue, rightHasValue, rightValue),
+            ComparisonOp.Le => CmpLessThan(leftHasValue, leftValue, rightHasValue, rightValue)
+                            || CmpEquals(leftHasValue, leftValue, rightHasValue, rightValue),
             ComparisonOp.Gt => CmpLessThan(rightHasValue, rightValue, leftHasValue, leftValue),
-            ComparisonOp.Ge => CmpLessThan(rightHasValue, rightValue, leftHasValue, leftValue) || CmpEquals(leftHasValue, leftValue, rightHasValue, rightValue),
+            ComparisonOp.Ge => CmpLessThan(rightHasValue, rightValue, leftHasValue, leftValue)
+                            || CmpEquals(leftHasValue, leftValue, rightHasValue, rightValue),
             _ => false
         };
     }
@@ -494,7 +543,8 @@ internal static class JsonPathEvaluator
                 return CompareNumbers(left, right);
                 
             case JsonValueKind.String:
-                return left.GetString() == right.GetString();
+                // ValueEquals avoids one string allocation compared to GetString() == GetString()
+                return left.ValueEquals(right.GetString()!);
                 
             case JsonValueKind.Array:
                 return ArrayDeepEquals(left, right);
@@ -539,7 +589,7 @@ internal static class JsonPathEvaluator
             JsonValueKind.True => true,
             JsonValueKind.False => true,
             JsonValueKind.Number => CompareNumbers(a, b),
-            JsonValueKind.String => a.GetString() == b.GetString(),
+            JsonValueKind.String => a.ValueEquals(b.GetString()!),
             JsonValueKind.Array => ArrayDeepEquals(a, b),
             JsonValueKind.Object => ObjectDeepEquals(a, b),
             _ => false
@@ -698,9 +748,9 @@ internal static class JsonPathEvaluator
 
         JsonElement? result = el.ValueKind switch
         {
-            JsonValueKind.String => MakeJsonNumber(el.GetString()!.EnumerateRunes().Count()),
+            JsonValueKind.String => MakeJsonNumber(CountUnicodeScalarValues(el.GetString()!)),
             JsonValueKind.Array => MakeJsonNumber(el.GetArrayLength()),
-            JsonValueKind.Object => MakeJsonNumber(CountObjectMembers(el)),
+            JsonValueKind.Object => MakeJsonNumber(el.GetPropertyCount()),
             _ => null
         };
 
@@ -885,7 +935,12 @@ internal static class JsonPathEvaluator
                 return lit.Value.HasValue ? lit.Value.Value : (object?)null;
 
             case FilterQueryArgument fq:
-                // Used as singular query for ValueType
+                // Fast path: for singular paths (the common case for ValueType arguments
+                // like length(@.title)), avoid allocating a List.
+                var startNode = fq.Query.IsRelative ? current : root;
+                if (TryEvaluateSingularPath(fq.Query.Segments, in startNode, out var singular))
+                    return singular.Length == 1 ? singular[0] : (object?)null;
+                // General path
                 var nodes = EvalFilterQuery(fq.Query, current, root);
                 return nodes.Count == 1 ? nodes[0] : (object?)null;
 
@@ -937,11 +992,21 @@ internal static class JsonPathEvaluator
         return JsonDocument.Parse(value.ToString()).RootElement.Clone();
     }
 
-    private static int CountObjectMembers(JsonElement obj)
+    /// <summary>
+    /// Counts the number of Unicode scalar values (code points) in a string.
+    /// Surrogate pairs represent a single code point, so each pair is counted as 1.
+    /// This is faster than <c>EnumerateRunes().Count()</c>.
+    /// </summary>
+    private static int CountUnicodeScalarValues(string s)
     {
-        int count = 0;
-        foreach (var _ in obj.EnumerateObject())
-            count++;
+        int count = s.Length;
+        // Each high surrogate is the first char of a surrogate pair (one code point = 2 chars).
+        // Subtract one for each high surrogate to get the code point count.
+        foreach (char c in s)
+        {
+            if (char.IsHighSurrogate(c))
+                count--;
+        }
         return count;
     }
 }
