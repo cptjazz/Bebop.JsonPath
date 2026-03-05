@@ -154,7 +154,8 @@ internal static class JsonPathEvaluator
             // Apply selector to current node
             ApplySelector(selector, in current, in root, results);
 
-            // Push children in reverse order so they are processed left-to-right
+            // Push children — RFC 9535 does not stipulate object member order,
+            // so we can push directly without collecting to reverse.
             if (current.ValueKind == JsonValueKind.Array)
             {
                 int len = current.GetArrayLength();
@@ -163,12 +164,8 @@ internal static class JsonPathEvaluator
             }
             else if (current.ValueKind == JsonValueKind.Object)
             {
-                // We need to push in reverse order; collect to a local list first
-                var props = new List<JsonElement>(current.GetPropertyCount());
                 foreach (var prop in current.EnumerateObject())
-                    props.Add(prop.Value);
-                for (int i = props.Count - 1; i >= 0; i--)
-                    stack.Push(props[i]);
+                    stack.Push(prop.Value);
             }
         }
     }
@@ -187,7 +184,8 @@ internal static class JsonPathEvaluator
             foreach (var selector in selectors)
                 ApplySelector(selector, in current, in root, results);
 
-            // Push children in reverse order so they are processed left-to-right
+            // Push children — RFC 9535 does not stipulate object member order,
+            // so we can push directly without collecting to reverse.
             if (current.ValueKind == JsonValueKind.Array)
             {
                 int len = current.GetArrayLength();
@@ -196,11 +194,8 @@ internal static class JsonPathEvaluator
             }
             else if (current.ValueKind == JsonValueKind.Object)
             {
-                var props = new List<JsonElement>(current.GetPropertyCount());
                 foreach (var prop in current.EnumerateObject())
-                    props.Add(prop.Value);
-                for (int i = props.Count - 1; i >= 0; i--)
-                    stack.Push(props[i]);
+                    stack.Push(prop.Value);
             }
         }
     }
@@ -994,14 +989,17 @@ internal static class JsonPathEvaluator
 
     /// <summary>
     /// Counts the number of Unicode scalar values (code points) in a string.
-    /// Surrogate pairs represent a single code point, so each pair is counted as 1.
-    /// This is faster than <c>EnumerateRunes().Count()</c>.
+    /// In C#, each surrogate pair represents a single supplementary-plane code point;
+    /// subtracting the number of high surrogates gives the scalar-value count.
     /// </summary>
     private static int CountUnicodeScalarValues(string s)
     {
+        // Fast path: most strings have no surrogates at all.
+        if (s.AsSpan().IndexOfAnyInRange('\uD800', '\uDFFF') < 0)
+            return s.Length;
+
+        // Slow path: subtract one for each high surrogate (each pair counts as one code point).
         int count = s.Length;
-        // Each high surrogate is the first char of a surrogate pair (one code point = 2 chars).
-        // Subtract one for each high surrogate to get the code point count.
         foreach (char c in s)
         {
             if (char.IsHighSurrogate(c))

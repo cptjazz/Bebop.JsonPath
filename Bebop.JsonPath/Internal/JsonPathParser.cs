@@ -470,9 +470,16 @@ internal ref struct JsonPathParser
 
     // ── Cached literal JsonElements ───────────────────────────────────────
 
-    private static readonly JsonElement _trueLiteral = JsonDocument.Parse("true").RootElement.Clone();
-    private static readonly JsonElement _falseLiteral = JsonDocument.Parse("false").RootElement.Clone();
-    private static readonly JsonElement _nullLiteral = JsonDocument.Parse("null").RootElement.Clone();
+    // Helper: parse a static JSON literal and dispose the intermediate document
+    private static JsonElement ParseStaticLiteral(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    private static readonly JsonElement _trueLiteral = ParseStaticLiteral("true");
+    private static readonly JsonElement _falseLiteral = ParseStaticLiteral("false");
+    private static readonly JsonElement _nullLiteral = ParseStaticLiteral("null");
 
     // ── Literals ──────────────────────────────────────────────────────────
 
