@@ -52,7 +52,7 @@ internal ref struct JsonPathParser
 
     private Segment[] ParseSegments()
     {
-        var segments = new List<Segment>();
+        var segments = new List<Segment>(4); // Most paths have few segments
         while (true)
         {
             // Per RFC 9535 ABNF: segments = *(S segment). Whitespace is only
@@ -125,9 +125,17 @@ internal ref struct JsonPathParser
         Expect('[');
         SkipWhitespace();
 
-        var selectors = new List<ISelector>();
-        selectors.Add(ParseSelector());
+        var firstSelector = ParseSelector();
 
+        SkipWhitespace();
+        if (_pos >= _source.Length || _source[_pos] != ',')
+        {
+            // Single selector (most common case) — skip list allocation
+            Expect(']');
+            return new SingleSelectorSegment(firstSelector, isDescendant);
+        }
+
+        var selectors = new List<ISelector>(4) { firstSelector };
         while (true)
         {
             SkipWhitespace();
@@ -146,11 +154,7 @@ internal ref struct JsonPathParser
         SkipWhitespace();
         Expect(']');
         
-        // Create SingleSelectorSegment for single selector, MultiSelectorSegment for multiple
-        if (selectors.Count == 1)
-            return new SingleSelectorSegment(selectors[0], isDescendant);
-        else
-            return new MultiSelectorSegment(selectors.ToArray(), isDescendant);
+        return new MultiSelectorSegment(selectors.ToArray(), isDescendant);
     }
 
     // ── Selectors ─────────────────────────────────────────────────────────
@@ -464,6 +468,19 @@ internal ref struct JsonPathParser
         return new LiteralComparable(literal);
     }
 
+    // ── Cached literal JsonElements ───────────────────────────────────────
+
+    // Helper: parse a static JSON literal and dispose the intermediate document
+    private static JsonElement ParseStaticLiteral(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    private static readonly JsonElement _trueLiteral = ParseStaticLiteral("true");
+    private static readonly JsonElement _falseLiteral = ParseStaticLiteral("false");
+    private static readonly JsonElement _nullLiteral = ParseStaticLiteral("null");
+
     // ── Literals ──────────────────────────────────────────────────────────
 
     private JsonElement? ParseLiteral()
@@ -486,11 +503,11 @@ internal ref struct JsonPathParser
         }
 
         if (TryConsumeKeyword("true"))
-            return JsonDocument.Parse("true").RootElement.Clone();
+            return _trueLiteral;
         if (TryConsumeKeyword("false"))
-            return JsonDocument.Parse("false").RootElement.Clone();
+            return _falseLiteral;
         if (TryConsumeKeyword("null"))
-            return JsonDocument.Parse("null").RootElement.Clone();
+            return _nullLiteral;
 
         throw new FormatException($"Unexpected character '{c}' at position {_pos} while parsing literal.");
     }
@@ -549,7 +566,30 @@ internal ref struct JsonPathParser
     private string ParseSingleQuotedString()
     {
         Expect('\'');
-        var sb = new StringBuilder();
+        int start = _pos;
+
+        // Fast path: scan for end or escape without building a StringBuilder.
+        // Most property names are plain ASCII with no escape sequences.
+        int i = _pos;
+        while (i < _source.Length)
+        {
+            char c = _source[i];
+            if (c == '\'')
+            {
+                // No escapes — return span directly
+                var fast = _source[start..i].ToString();
+                _pos = i + 1;
+                return fast;
+            }
+            // Any escape, surrogate, or control character requires the slow path
+            if (c == '\\' || c < '\x20' || char.IsHighSurrogate(c) || char.IsLowSurrogate(c))
+                break;
+            i++;
+        }
+
+        // Slow path: build result with a StringBuilder, pre-seeded with the unescaped prefix
+        var sb = new StringBuilder(_source[start..i].ToString());
+        _pos = i;
         while (_pos < _source.Length)
         {
             char c = _source[_pos];
@@ -591,7 +631,29 @@ internal ref struct JsonPathParser
     private string ParseDoubleQuotedString()
     {
         Expect('"');
-        var sb = new StringBuilder();
+        int start = _pos;
+
+        // Fast path: scan for end or escape without building a StringBuilder.
+        int i = _pos;
+        while (i < _source.Length)
+        {
+            char c = _source[i];
+            if (c == '"')
+            {
+                // No escapes — return span directly
+                var fast = _source[start..i].ToString();
+                _pos = i + 1;
+                return fast;
+            }
+            // Any escape, surrogate, or control character requires the slow path
+            if (c == '\\' || c < '\x20' || char.IsHighSurrogate(c) || char.IsLowSurrogate(c))
+                break;
+            i++;
+        }
+
+        // Slow path: build result with a StringBuilder, pre-seeded with the unescaped prefix
+        var sb = new StringBuilder(_source[start..i].ToString());
+        _pos = i;
         while (_pos < _source.Length)
         {
             char c = _source[_pos];
