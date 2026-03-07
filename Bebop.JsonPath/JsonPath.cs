@@ -89,9 +89,9 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// </summary>
     public object? Evaluate(in JsonElement jsonDocument)
     {
-        if (TryEvaluate(jsonDocument, out var result))
-            return result;
-        return null;
+        return TryEvaluate(jsonDocument, out var result)
+            ? result
+            : null;
     }
 
     /// <summary>
