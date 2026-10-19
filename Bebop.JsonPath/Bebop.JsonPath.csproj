@@ -28,7 +28,7 @@
     <InternalsVisibleTo Include="Tests.Bebop.JsonPath.Net8" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+  <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="10.0.0" />
   </ItemGroup>
 
