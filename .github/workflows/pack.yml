@@ -8,14 +8,10 @@ jobs:
   pack:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
       packages: write
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v7
-      with:
-        submodules: recursive
+    - uses: actions/checkout@v7
     
     - name: Setup .NET
       uses: actions/setup-dotnet@v6
