@@ -1,3 +1,6 @@
 namespace Bebop.JsonPath.Internal;
 
-internal abstract record LogicalExpr;
+internal abstract class LogicalExpr
+{
+    internal abstract bool Evaluate(in SelectorContext selectorContext);
+}

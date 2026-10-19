@@ -99,7 +99,7 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// </summary>
     public bool TryEvaluate(in JsonElement jsonDocument, out JsonElement[] result)
     {
-        result = JsonPathEvaluator.Evaluate(_segments ?? [], in jsonDocument);
+        result = JsonPathEvaluator2.Evaluate(_segments ?? [], in jsonDocument);
         return true;
     }
 
