@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -45,14 +46,16 @@ internal ref struct JsonPathParser
         if (_pos < _source.Length)
             throw new FormatException($"Unexpected character '{_source[_pos]}' at position {_pos}.");
 
-        return segments;
+        return segments.segments;
     }
 
     // ── Segments ──────────────────────────────────────────────────────────
 
-    private Segment[] ParseSegments()
+    private (Segment[] segments, string original) ParseSegments()
     {
         var segments = new List<Segment>();
+        var startPos = _pos;
+
         while (true)
         {
             // Per RFC 9535 ABNF: segments = *(S segment). Whitespace is only
@@ -117,7 +120,9 @@ internal ref struct JsonPathParser
                 break;
             }
         }
-        return segments.ToArray();
+
+        string original = _source[startPos.._pos].ToString();
+        return (segments.ToArray(), original);
     }
 
     private Segment ParseBracketedSelection(bool isDescendant)
@@ -841,8 +846,8 @@ internal ref struct JsonPathParser
             throw new FormatException($"Expected '@' or '$' at position {_pos}.");
         }
 
-        var segments = ParseSegments();
-        return new FilterQuery(isRelative, segments);
+        var (segments, original) = ParseSegments();
+        return new FilterQuery(isRelative, segments, original);
     }
 
     // ── Singular Query ────────────────────────────────────────────────────
@@ -1041,7 +1046,7 @@ internal ref struct JsonPathParser
                         SingularNameSegment n => new SingleSelectorSegment(new NameSelector(n.Name), false),
                         SingularIndexSegment i => new SingleSelectorSegment(new IndexSelector(i.Index), false),
                         _ => throw new InvalidOperationException()
-                    }).ToArray()));
+                    }).ToArray(), "todo--maybe replace this by proper original query string"));
             }
 
             // Default: parse as filter-query

@@ -5,10 +5,10 @@ namespace Bebop.JsonPath;
 
 public readonly struct JsonPath : IEquatable<JsonPath>
 {
-    private readonly Segment[] _segments;
+    private readonly ReadOnlyMemory<Segment> _segments;
     private readonly string _original;
 
-    private JsonPath(Segment[] segments, string original)
+    internal JsonPath(ReadOnlyMemory<Segment> segments, string original)
     {
         _segments = segments;
         _original = original;
@@ -17,7 +17,7 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// <summary>
     /// Gets a <see cref="JsonPath"/> representing the root identifier "$".
     /// </summary>
-    public static JsonPath Root { get; } = new JsonPath([], "$");
+    public static JsonPath Root { get; } = new JsonPath(ReadOnlyMemory<Segment>.Empty, "$");
 
     /// <summary>
     /// Parses an RFC 9535 JSONPath query string.
@@ -44,8 +44,8 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     {
         ArgumentNullException.ThrowIfNull(propertyName);
 
-        var newSegments = new Segment[(_segments?.Length ?? 0) + 1];
-        _segments?.CopyTo(newSegments, 0);
+        var newSegments = new Segment[_segments.Length + 1];
+        _segments.Span.CopyTo(newSegments);
         newSegments[^1] = new SingleSelectorSegment(new NameSelector(propertyName), false);
 
         string newOriginal = (_original ?? "$") + "['" + EscapeName(propertyName) + "']";
@@ -57,8 +57,8 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// </summary>
     public JsonPath Index(int index)
     {
-        var newSegments = new Segment[(_segments?.Length ?? 0) + 1];
-        _segments?.CopyTo(newSegments, 0);
+        var newSegments = new Segment[_segments.Length + 1];
+        _segments.Span.CopyTo(newSegments);
         newSegments[^1] = new SingleSelectorSegment(new IndexSelector(index), false);
 
         string newOriginal = (_original ?? "$") + "[" + index + "]";
@@ -87,11 +87,11 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// Evaluates the JSONPath query against the given JSON element.
     /// Returns the resulting nodelist as <see cref="JsonElement"/>[], or null if evaluation fails.
     /// </summary>
-    public JsonElement[]? Evaluate(in JsonElement jsonDocument)
+    public JsonElement[] Evaluate(in JsonElement jsonDocument)
     {
         return TryEvaluate(jsonDocument, out var result)
             ? result
-            : null;
+            : throw new InvalidOperationException("Evaluation failed.");
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// </summary>
     public bool TryEvaluate(in JsonElement jsonDocument, out JsonElement[] result)
     {
-        result = JsonPathEvaluator2.Evaluate(_segments ?? [], in jsonDocument);
+        result = JsonPathEvaluator2.Evaluate(_segments.Span, in jsonDocument);
         return true;
     }
 

@@ -3,18 +3,18 @@ using System.Text.Json;
 
 namespace Bebop.JsonPath.Internal;
 
-internal readonly struct ResultCollector
+internal readonly ref struct ResultCollector
 {
     private readonly List<JsonElement> _results;
-
+ 
     public ResultCollector()
     {
-        _results = new();
+        _results = new List<JsonElement>(5);
     }
 
     public ReadOnlySpan<JsonElement> Results => CollectionsMarshal.AsSpan(_results);
 
-    internal void Add(in JsonElement value)
+    public void Add(in JsonElement value)
     {
         _results.Add(value);
     }

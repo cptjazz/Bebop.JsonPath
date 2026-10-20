@@ -14,8 +14,7 @@ internal static class JsonPathEvaluator2
 
             for (int i = 0; i < nodeSet.Length; i++)
             {
-                JsonElement current = nodeSet[i];
-                segment.Evaluate(new SelectorContext(current, root), c);
+                segment.Evaluate(new SelectorContext(nodeSet[i], root), c);
             }
 
             nodeSet = c.Results;
