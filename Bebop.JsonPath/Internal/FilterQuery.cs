@@ -20,6 +20,6 @@ internal sealed record FilterQuery
             ? selectorContext.Current
             : selectorContext.Root;
 
-        return path.Evaluate(node).Length > 0;
+        return path.Evaluate(node).Any();
     }
 }

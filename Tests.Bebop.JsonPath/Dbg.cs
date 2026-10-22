@@ -25,6 +25,6 @@ public class Dbg
         using var doc = JsonDocument.Parse(json);
         var result = path.Evaluate(doc.RootElement);
 
-        Assert.Equal(2, result.Length);
+        Assert.Equal(2, result.Count());
     }
 }

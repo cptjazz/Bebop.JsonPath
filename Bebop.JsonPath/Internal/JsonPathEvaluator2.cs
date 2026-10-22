@@ -4,22 +4,22 @@ namespace Bebop.JsonPath.Internal;
 
 internal static class JsonPathEvaluator2
 {
-    internal static JsonElement[] Evaluate(ReadOnlySpan<Segment> segments, ref readonly JsonElement root)
+    internal static IEnumerable<JsonElement> Evaluate(ReadOnlySpan<Segment> segments, in JsonElement root)
     {
-        ReadOnlySpan<JsonElement> nodeSet = [root];
+        IEnumerable<JsonElement> nodeSet = [root];
 
         foreach (var segment in segments)
         {
             var c = new ResultCollector();
 
-            for (int i = 0; i < nodeSet.Length; i++)
+            foreach (var n in nodeSet)
             {
-                segment.Evaluate(new SelectorContext(nodeSet[i], root), c);
+                segment.Evaluate(new SelectorContext(n, root), c);
             }
 
             nodeSet = c.Results;
         }
 
-        return nodeSet.ToArray();
+        return [.. nodeSet]; // materialize IEnumerable!
     }
 }

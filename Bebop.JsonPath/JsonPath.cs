@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Bebop.JsonPath.Internal;
 
@@ -87,17 +88,23 @@ public readonly struct JsonPath : IEquatable<JsonPath>
     /// Evaluates the JSONPath query against the given JSON element.
     /// Returns the resulting nodelist as <see cref="JsonElement"/>[], or null if evaluation fails.
     /// </summary>
-    public JsonElement[] Evaluate(in JsonElement jsonDocument)
+    public IEnumerable<JsonElement> Evaluate(in JsonElement jsonDocument)
     {
         return TryEvaluate(jsonDocument, out var result)
             ? result
-            : throw new InvalidOperationException("Evaluation failed.");
+            : _Throw();
+
+        [DoesNotReturn]
+        static IEnumerable<JsonElement> _Throw()
+        {
+            throw new InvalidOperationException("Evaluation failed.");
+        }
     }
 
     /// <summary>
     /// Tries to evaluate the JSONPath query against the given JSON element.
     /// </summary>
-    public bool TryEvaluate(in JsonElement jsonDocument, out JsonElement[] result)
+    public bool TryEvaluate(in JsonElement jsonDocument, out IEnumerable<JsonElement> result)
     {
         result = JsonPathEvaluator2.Evaluate(_segments.Span, in jsonDocument);
         return true;

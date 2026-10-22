@@ -108,34 +108,34 @@ public class EvaluationBenchmarks
 
     // ── Descendant (recursive) ────────────────────────────────────────────
 
-    [BenchmarkCategory("DescendantEval"), Benchmark(Baseline = true)]
+    //[BenchmarkCategory("DescendantEval"), Benchmark(Baseline = true)]
     public object? Bebop_Eval_Descendant() => _bebopDescendant.Evaluate(_bookStoreElement);
 
-    [BenchmarkCategory("DescendantEval"), Benchmark]
+    //[BenchmarkCategory("DescendantEval"), Benchmark]
     public NodeList? JsonPathNet_Eval_Descendant() => _jeDescendant.Evaluate(_bookStoreNode).Matches;
 
     // ── Slice on array ────────────────────────────────────────────────────
 
-    [BenchmarkCategory("SliceEval"), Benchmark(Baseline = true)]
+    //[BenchmarkCategory("SliceEval"), Benchmark(Baseline = true)]
     public object? Bebop_Eval_Slice() => _bebopSlice.Evaluate(_largeArrayElement);
 
-    [BenchmarkCategory("SliceEval"), Benchmark]
+    //[BenchmarkCategory("SliceEval"), Benchmark]
     public NodeList? JsonPathNet_Eval_Slice() => _jeSlice.Evaluate(_largeArrayNode).Matches;
 
     // ── Filter on bookstore ───────────────────────────────────────────────
 
-    [BenchmarkCategory("FilterEval"), Benchmark(Baseline = true)]
+    //[BenchmarkCategory("FilterEval"), Benchmark(Baseline = true)]
     public object? Bebop_Eval_Filter() => _bebopFilter.Evaluate(_bookStoreElement);
 
-    [BenchmarkCategory("FilterEval"), Benchmark]
+    //[BenchmarkCategory("FilterEval"), Benchmark]
     public NodeList? JsonPathNet_Eval_Filter() => _jeFilter.Evaluate(_bookStoreNode).Matches;
 
     // ── Complex filter on large array ─────────────────────────────────────
 
-    [BenchmarkCategory("ComplexFilterEval"), Benchmark(Baseline = true)]
+    //[BenchmarkCategory("ComplexFilterEval"), Benchmark(Baseline = true)]
     public object? Bebop_Eval_ComplexFilter() => _bebopComplexFilter.Evaluate(_largeArrayElement);
 
-    [BenchmarkCategory("ComplexFilterEval"), Benchmark]
+    //[BenchmarkCategory("ComplexFilterEval"), Benchmark]
     public NodeList? JsonPathNet_Eval_ComplexFilter() => _jeComplexFilter.Evaluate(_largeArrayNode).Matches;
 
     // ── Wildcard ──────────────────────────────────────────────────────────

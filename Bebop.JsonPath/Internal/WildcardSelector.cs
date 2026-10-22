@@ -10,25 +10,32 @@ internal sealed record WildcardSelector : ISelector
     {
     }
 
-    public void Evaluate(in SelectorContext context, ResultCollector results)
+    public void Evaluate(in SelectorContext context, in ResultCollector results)
     {
         if (context.Current.ValueKind == JsonValueKind.Object)
         {
-            foreach (var property in context.Current.EnumerateObject())
-            {
-                results.Add(property.Value);
-            }
+            _EvaluateObj(context, results);
         }
         else if (context.Current.ValueKind == JsonValueKind.Array)
         {
-            foreach (var element in context.Current.EnumerateArray())
-            {
-                results.Add(element);
-            }
+            _EvaluateArr(context, results);
         }
-        else
+    }
+
+    private static void _EvaluateArr(in SelectorContext context, in ResultCollector results)
+    {
+        results.Add(context.Current.EnumerateArray());
+    }
+
+    private static void _EvaluateObj(in SelectorContext context, in ResultCollector results)
+    {
+        var store = new List<JsonElement>(context.Current.GetPropertyCount());
+
+        foreach (var property in context.Current.EnumerateObject())
         {
-            results.Add(context.Current);
+            store.Add(property.Value);
         }
+
+        results.Add(store);
     }
 }
