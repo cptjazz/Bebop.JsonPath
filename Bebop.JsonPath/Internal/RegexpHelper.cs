@@ -7,7 +7,7 @@ namespace Bebop.JsonPath.Internal;
 /// Helper class for converting I-Regexp (RFC 9485) patterns to .NET Regex patterns
 /// and compiling them.
 /// </summary>
-internal static class IRegexpHelper
+internal static class RegexpHelper
 {
     // Cache for I-Regexp to .NET Regex pattern conversion
     private static readonly Dictionary<string, string> _iregexpConversionCache = new();

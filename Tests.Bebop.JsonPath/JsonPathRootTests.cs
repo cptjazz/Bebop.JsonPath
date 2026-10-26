@@ -46,10 +46,9 @@ public sealed class JsonPathRootTests
 
         // Assert
         Assert.NotNull(result);
-        var elements = Assert.IsType<JsonElement[]>(result);
-        Assert.Single(elements);
-        Assert.Equal(JsonValueKind.Object, elements[0].ValueKind);
-        Assert.Equal(json, elements[0].GetRawText());
+        Assert.Single(result);
+        Assert.Equal(JsonValueKind.Object, result[0].ValueKind);
+        Assert.Equal(json, result[0].GetRawText());
     }
 
     [Fact]
@@ -66,9 +65,8 @@ public sealed class JsonPathRootTests
         Assert.Equal("$['store']['book']['title']", path.ToString());
         
         var result = path.Evaluate(doc.RootElement);
-        var elements = Assert.IsType<JsonElement[]>(result);
-        Assert.Single(elements);
-        Assert.Equal("\"Test Book\"", elements[0].GetRawText());
+        Assert.Single(result);
+        Assert.Equal("\"Test Book\"", result[0].GetRawText());
     }
 
     [Fact]
@@ -85,9 +83,8 @@ public sealed class JsonPathRootTests
         Assert.Equal("$[1]", path.ToString());
         
         var result = path.Evaluate(doc.RootElement);
-        var elements = Assert.IsType<JsonElement[]>(result);
-        Assert.Single(elements);
-        Assert.Equal(20, elements[0].GetInt32());
+        Assert.Single(result);
+        Assert.Equal(20, result[0].GetInt32());
     }
 
     [Fact]
@@ -104,9 +101,8 @@ public sealed class JsonPathRootTests
         Assert.Equal("$['items'][0]['name']", path.ToString());
         
         var result = path.Evaluate(doc.RootElement);
-        var elements = Assert.IsType<JsonElement[]>(result);
-        Assert.Single(elements);
-        Assert.Equal("\"Item1\"", elements[0].GetRawText());
+        Assert.Single(result);
+        Assert.Equal("\"Item1\"", result[0].GetRawText());
     }
 
     [Fact]
@@ -142,10 +138,9 @@ public sealed class JsonPathRootTests
         var result = JsonPathType.Root.Evaluate(doc.RootElement);
 
         // Assert
-        var elements = Assert.IsType<JsonElement[]>(result);
-        Assert.Single(elements);
-        Assert.Equal(JsonValueKind.Object, elements[0].ValueKind);
-        Assert.True(elements[0].TryGetProperty("store", out _));
+        Assert.Single(result);
+        Assert.Equal(JsonValueKind.Object, result[0].ValueKind);
+        Assert.True(result[0].TryGetProperty("store", out _));
     }
 
     [Fact]

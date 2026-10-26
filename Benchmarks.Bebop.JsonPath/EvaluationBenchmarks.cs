@@ -101,48 +101,48 @@ public class EvaluationBenchmarks
     // ── Simple property access ────────────────────────────────────────────
 
     [BenchmarkCategory("SimpleEval"), Benchmark(Baseline = true)]
-    public object? Bebop_Eval_Simple() => _bebopSimple.Evaluate(_bookStoreElement);
+    public object Bebop_Eval_Simple() => _bebopSimple.Evaluate(_bookStoreElement).ToArray();
 
     [BenchmarkCategory("SimpleEval"), Benchmark]
-    public NodeList? JsonPathNet_Eval_Simple() => _jeSimple.Evaluate(_bookStoreNode).Matches;
+    public object JsonPathNet_Eval_Simple() => _jeSimple.Evaluate(_bookStoreNode).Matches.ToArray();
 
     // ── Descendant (recursive) ────────────────────────────────────────────
 
     [BenchmarkCategory("DescendantEval"), Benchmark(Baseline = true)]
-    public object? Bebop_Eval_Descendant() => _bebopDescendant.Evaluate(_bookStoreElement);
+    public object Bebop_Eval_Descendant() => _bebopDescendant.Evaluate(_bookStoreElement).ToArray();
 
     [BenchmarkCategory("DescendantEval"), Benchmark]
-    public NodeList? JsonPathNet_Eval_Descendant() => _jeDescendant.Evaluate(_bookStoreNode).Matches;
+    public object JsonPathNet_Eval_Descendant() => _jeDescendant.Evaluate(_bookStoreNode).Matches.ToArray();
 
     // ── Slice on array ────────────────────────────────────────────────────
 
     [BenchmarkCategory("SliceEval"), Benchmark(Baseline = true)]
-    public object? Bebop_Eval_Slice() => _bebopSlice.Evaluate(_largeArrayElement);
+    public object Bebop_Eval_Slice() => _bebopSlice.Evaluate(_largeArrayElement).ToArray();
 
     [BenchmarkCategory("SliceEval"), Benchmark]
-    public NodeList? JsonPathNet_Eval_Slice() => _jeSlice.Evaluate(_largeArrayNode).Matches;
+    public object JsonPathNet_Eval_Slice() => _jeSlice.Evaluate(_largeArrayNode).Matches.ToArray();
 
     // ── Filter on bookstore ───────────────────────────────────────────────
 
     [BenchmarkCategory("FilterEval"), Benchmark(Baseline = true)]
-    public object? Bebop_Eval_Filter() => _bebopFilter.Evaluate(_bookStoreElement);
+    public object Bebop_Eval_Filter() => _bebopFilter.Evaluate(_bookStoreElement).ToArray();
 
     [BenchmarkCategory("FilterEval"), Benchmark]
-    public NodeList? JsonPathNet_Eval_Filter() => _jeFilter.Evaluate(_bookStoreNode).Matches;
+    public object JsonPathNet_Eval_Filter() => _jeFilter.Evaluate(_bookStoreNode).Matches.ToArray();
 
     // ── Complex filter on large array ─────────────────────────────────────
 
     [BenchmarkCategory("ComplexFilterEval"), Benchmark(Baseline = true)]
-    public object? Bebop_Eval_ComplexFilter() => _bebopComplexFilter.Evaluate(_largeArrayElement);
+    public object Bebop_Eval_ComplexFilter() => _bebopComplexFilter.Evaluate(_largeArrayElement).ToArray();
 
     [BenchmarkCategory("ComplexFilterEval"), Benchmark]
-    public NodeList? JsonPathNet_Eval_ComplexFilter() => _jeComplexFilter.Evaluate(_largeArrayNode).Matches;
+    public object JsonPathNet_Eval_ComplexFilter() => _jeComplexFilter.Evaluate(_largeArrayNode).Matches.ToArray();
 
     // ── Wildcard ──────────────────────────────────────────────────────────
 
     [BenchmarkCategory("WildcardEval"), Benchmark(Baseline = true)]
-    public object? Bebop_Eval_Wildcard() => _bebopWildcard.Evaluate(_bookStoreElement);
+    public object Bebop_Eval_Wildcard() => _bebopWildcard.Evaluate(_bookStoreElement).ToArray();
 
     [BenchmarkCategory("WildcardEval"), Benchmark]
-    public NodeList? JsonPathNet_Eval_Wildcard() => _jeWildcard.Evaluate(_bookStoreNode).Matches;
+    public object JsonPathNet_Eval_Wildcard() => _jeWildcard.Evaluate(_bookStoreNode).Matches.ToArray();
 }
