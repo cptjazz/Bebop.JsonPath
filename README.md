@@ -13,6 +13,7 @@ An RFC 9535 compliant JSONPath implementation for .NET.
 - **RFC 9535 Compliant**: Full implementation of the [RFC 9535](https://www.rfc-editor.org/rfc/rfc9535) JSONPath standard
 - **Type Safe**: Works seamlessly with `System.Text.Json.JsonElement`
 - **Zero Dependencies**: No external dependencies (except System.Text.Json for .NET 8)
+- **Native AOT Compatible**: Supports trimming and Native AOT publishing
 - **Thoroughly Tested**: Passes all JSONPath Compliance Test Suite cases (703+ tests)
 - **Multi-targeting**: Supports .NET 8.0 and .NET 10.0
 
