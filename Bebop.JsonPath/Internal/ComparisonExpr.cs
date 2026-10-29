@@ -93,7 +93,7 @@ internal sealed class ComparisonExpr(Comparable Left, ComparisonOp Op, Comparabl
                     if (!b.TryGetProperty(property.Name, out var other) || !_DeepEquals(property.Value, other))
                         return false;
                 }
-                return count == b.EnumerateObject().Count();
+                return count == b.GetPropertyCount();
             default:
                 return true; // true, false, null: kinds already equal
         }
