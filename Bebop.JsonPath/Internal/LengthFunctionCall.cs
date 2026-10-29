@@ -17,7 +17,7 @@ internal sealed record LengthFunctionCall(IReadOnlyList<IFunctionArgument> Argum
         {
             JsonValueKind.String => CreateNumber(v.GetString()!.EnumerateRunes().Count()),
             JsonValueKind.Array => CreateNumber(v.GetArrayLength()),
-            JsonValueKind.Object => CreateNumber(v.EnumerateObject().Count()),
+            JsonValueKind.Object => CreateNumber(v.GetPropertyCount()),
             _ => null
         };
     }
