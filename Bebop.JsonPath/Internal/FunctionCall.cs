@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Globalization;
 
 namespace Bebop.JsonPath.Internal;
 
@@ -19,5 +20,11 @@ internal abstract record FunctionCall(string Name, IReadOnlyList<IFunctionArgume
     protected static JsonElement? GetValue(IFunctionArgument argument, SelectorContext selectorContext)
     {
         return argument.GetValue(selectorContext);
+    }
+
+    protected static JsonElement CreateNumber(int value)
+    {
+        using var document = JsonDocument.Parse(value.ToString(CultureInfo.InvariantCulture));
+        return document.RootElement.Clone();
     }
 }

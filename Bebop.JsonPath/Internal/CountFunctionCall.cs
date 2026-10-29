@@ -11,7 +11,7 @@ internal sealed record CountFunctionCall(IReadOnlyList<IFunctionArgument> Argume
     internal override JsonElement? EvaluateValue(SelectorContext selectorContext)
     {
         return Arguments[0] is FilterQueryArgument arg
-            ? JsonSerializer.SerializeToElement(arg.Query.GetNodes(selectorContext).Count)
+            ? CreateNumber(arg.Query.GetNodes(selectorContext).Count)
             : null;
     }
 }
