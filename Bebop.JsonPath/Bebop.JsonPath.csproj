@@ -8,7 +8,7 @@
     
     <!-- NuGet Package Metadata -->
     <PackageId>Bebop.JsonPath</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Alexander Jesner</Authors>
     <Company>Alexander Jesner</Company>
     <Description>RFC 9535 compliant JSONPath implementation for .NET</Description>
